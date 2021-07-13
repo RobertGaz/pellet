@@ -8,12 +8,7 @@ package org.mindswap.pellet.tableau.branch;
 
 import java.util.logging.Level;
 
-import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.Clash;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.PelletOptions;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
 import org.mindswap.pellet.utils.ATermUtils;
 
@@ -31,13 +26,15 @@ import aterm.ATermAppl;
  *
  * @author Evren sirin
  */
+
+// НЕ РАБОЧЕЕ
 public class GuessBranch extends IndividualBranch {
 	private Role r;
 	
 	private int minGuess;
 	private ATermAppl qualification;
 
-	public GuessBranch(ABox abox, CompletionStrategy strategy, Individual x, Role r, int minGuess, int maxGuess, ATermAppl q, DependencySet ds) {
+	public GuessBranch(ABox abox, CompletionStrategy strategy, Individual x, Role r, int minGuess, int maxGuess, ATermAppl q, TimeDS ds) {
 		super(abox, strategy, x, ds, maxGuess - minGuess + 1);
 		
 		this.r = r;
@@ -59,8 +56,8 @@ public class GuessBranch extends IndividualBranch {
 	
 	protected void tryBranch() {		
 		abox.incrementBranch();
-		
-		DependencySet ds = getTermDepends();			
+
+		TimeDS ds = getTermDepends();
 		for(; getTryNext() < getTryCount(); tryNext++) {		    
 		     // start with max possibility and decrement at each try  
 		    int n = minGuess + getTryCount() - getTryNext() - 1;
@@ -73,7 +70,7 @@ public class GuessBranch extends IndividualBranch {
                     (abox.getAnonCount() + 1) + " - anon") +
                     (abox.getAnonCount() + n) + " " + ds);						
 
-			ds = ds.union( new DependencySet( getBranch() ), abox.doExplanation() );
+			ds.add(getBranch());
 
             // add the min cardinality restriction just to make early clash detection easier
 			strategy.addType( ind, ATermUtils.makeMin(r.getName(), n, qualification), ds);
@@ -96,15 +93,15 @@ public class GuessBranch extends IndividualBranch {
 			
 			boolean earlyClash = abox.isClosed();
 			if(earlyClash) {
-				if( log.isLoggable( Level.FINE ) ) 
-                    log.fine("CLASH: Branch " + getBranch() + " " + abox.getClash() + "!");
+				if( log.isLoggable( Level.INFO ) )
+                    log.info("CLASH  Branch " + getBranch() + " " + abox.getClash() + "!");
 
-				DependencySet clashDepends = abox.getClash().getDepends();
+				TimeDS clashDepends = abox.getClash().getDepends();
 				
 				if(clashDepends.contains(getBranch())) {
 					// we need a global restore here because the merge operation modified three
 					// different nodes and possibly other global variables
-					strategy.restore(this);
+					strategy.restore(this, clashDepends.partByBranch(getBranch()).time());
 					
 					// global restore sets the branch number to previous value so we need to
 					// increment it again
@@ -121,9 +118,7 @@ public class GuessBranch extends IndividualBranch {
 
         ds = getCombinedClash();
         
-        //CHW - removed for rollback through deletions
-        if(!PelletOptions.USE_INCREMENTAL_DELETION)
-        		ds.remove( getBranch() );
+        ds.remove( getBranch() );
         
 		abox.setClash(Clash.unexplained(ind, ds));
 	
@@ -137,21 +132,6 @@ public class GuessBranch extends IndividualBranch {
 		
 		return "Branch " + getBranch() + " guess rule on " + ind  + " for role  " + r + " exhausted merge possibilities";
 	}
-	
-	
-	
-	/**
-	 * Added for to re-open closed branches.
-	 * This is needed for incremental reasoning through deletions
-	 * 
-	 * Currently this method does nothing as we cannot support incremental reasoning when
-	 * both nominals and inverses are used - this is the only case when the guess rule is needed.
-	 *
-	 * @param index The shift index
-	 */
-	public void shiftTryNext(int openIndex){
-		//decrement trynext
-		//tryNext--;		
-	}
+
 	
 }

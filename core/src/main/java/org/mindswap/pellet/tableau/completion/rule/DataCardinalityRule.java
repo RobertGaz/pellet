@@ -13,14 +13,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import org.mindswap.pellet.Clash;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 
 import aterm.ATerm;
 import aterm.ATermAppl;
@@ -47,12 +42,12 @@ import com.clarkparsia.pellet.datatypes.exceptions.DatatypeReasonerException;
  */
 public class DataCardinalityRule extends AbstractTableauRule {
 	public DataCardinalityRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.DATATYPE, BlockingType.NONE );
+		super( strategy, BlockingType.NONE );
 	}
 
 	public void apply(Individual x) {
 		final Map<ATermAppl, Collection<ATermAppl>> dataranges = new HashMap<ATermAppl, Collection<ATermAppl>>();
-		final Map<ATermAppl, DependencySet> rangeDepends = new HashMap<ATermAppl, DependencySet>();
+		final Map<ATermAppl, TimeDS> rangeDepends = new HashMap<ATermAppl, TimeDS>();
 
 		/*
 		 * Gather all data properties that appear in universal restrictions on this node. 
@@ -79,7 +74,7 @@ public class DataCardinalityRule extends AbstractTableauRule {
 			 * Collect the data range and its dependency set 
 			 */
 			Collection<ATermAppl> existing = dataranges.get( r );
-			DependencySet ds = x.getDepends( allDesc );
+			TimeDS ds = x.getDepends( allDesc );
 			if (existing == null) {
 				existing = new ArrayList<ATermAppl>();
 				dataranges.put( r, existing ); 
@@ -110,11 +105,11 @@ public class DataCardinalityRule extends AbstractTableauRule {
 			final Set<ATermAppl> ranges = role.getRanges();
 			if( !ranges.isEmpty() ) {
 				Collection<ATermAppl> existing = dataranges.get( r );
-				DependencySet ds;
+				TimeDS ds;
 				if( existing == null ) {
 					existing = new ArrayList<ATermAppl>();
 					dataranges.put( r, existing );
-					ds = DependencySet.EMPTY;
+					ds = TimeDS.EMPTY();
 				} else
 					ds = rangeDepends.get( r );
 
@@ -125,8 +120,8 @@ public class DataCardinalityRule extends AbstractTableauRule {
 					 * this loop and call addAll)
 					 */
 					existing.add( dataRange );
-					ds = ds.union( role.getExplainRange( dataRange ), strategy.getABox().doExplanation() );
-					rangeDepends.put( r, ds );
+					ds.addExplain( role.getExplainRange( dataRange ), strategy.getABox().doExplanation() );
+					rangeDepends.put( r, ds.copy() );
 				}
 			}
 		}
@@ -140,12 +135,12 @@ public class DataCardinalityRule extends AbstractTableauRule {
 
 			Set<ATermAppl> drs = new HashSet<ATermAppl>();
 			Collection<ATermAppl> direct = dataranges.get( r );
-			DependencySet ds;
+			TimeDS ds;
 			if (direct != null) {
 				drs.addAll(direct);
 				ds = rangeDepends.get( r );
 			} else
-				ds = DependencySet.EMPTY;
+				ds = TimeDS.EMPTY();
 			
 			ds = ds.union(x.getDepends(minDesc), strategy.getABox().doExplanation() );
 
@@ -154,8 +149,8 @@ public class DataCardinalityRule extends AbstractTableauRule {
 				Collection<ATermAppl> inherited = dataranges.get( s );
 				if( inherited != null ) {
 					drs.addAll( inherited );
-					ds = ds.union( rangeDepends.get( s ), strategy.getABox().doExplanation() ).union(
-							role.getExplainSuper( s ), strategy.getABox().doExplanation() );
+					ds = ds.union( rangeDepends.get( s ), strategy.getABox().doExplanation() );
+					ds.addExplain(role.getExplainSuper( s ), strategy.getABox().doExplanation() );
 				}
 			}
 

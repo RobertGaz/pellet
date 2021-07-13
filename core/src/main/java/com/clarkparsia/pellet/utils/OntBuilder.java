@@ -15,20 +15,6 @@ import aterm.ATerm;
 import aterm.ATermAppl;
 import aterm.ATermList;
 
-import com.clarkparsia.pellet.rules.model.AtomDConstant;
-import com.clarkparsia.pellet.rules.model.AtomDObject;
-import com.clarkparsia.pellet.rules.model.AtomDVariable;
-import com.clarkparsia.pellet.rules.model.AtomIConstant;
-import com.clarkparsia.pellet.rules.model.AtomIObject;
-import com.clarkparsia.pellet.rules.model.AtomIVariable;
-import com.clarkparsia.pellet.rules.model.BuiltInAtom;
-import com.clarkparsia.pellet.rules.model.ClassAtom;
-import com.clarkparsia.pellet.rules.model.DatavaluedPropertyAtom;
-import com.clarkparsia.pellet.rules.model.DifferentIndividualsAtom;
-import com.clarkparsia.pellet.rules.model.IndividualPropertyAtom;
-import com.clarkparsia.pellet.rules.model.Rule;
-import com.clarkparsia.pellet.rules.model.RuleAtom;
-import com.clarkparsia.pellet.rules.model.SameIndividualAtom;
 
 /**
  * <p>
@@ -346,118 +332,11 @@ public class OntBuilder {
 				kb.addIndividual( (ATermAppl) l.getFirst() );
 			kb.addAllDifferent( inds );
 		}
-		else if( afun.equals( ATermUtils.RULEFUN ) ) {
-			Set<RuleAtom> antecedent = new HashSet<RuleAtom>(); // Body
-			Set<RuleAtom> consequent = new HashSet<RuleAtom>(); // Head
-
-			ATermList head = (ATermList) axiom.getArgument( 1 );
-			ATermList body = (ATermList) axiom.getArgument( 2 );
-
-			for( ; !body.isEmpty(); body = body.getNext() )
-				antecedent.add( convertRuleAtom( (ATermAppl) body.getFirst() ) );
-
-			for( ; !head.isEmpty(); head = head.getNext() )
-				consequent.add( convertRuleAtom( (ATermAppl) head.getFirst() ) );
-
-			if( !antecedent.contains( null ) && !consequent.contains( null ) ) {
-				ATermAppl name = (ATermAppl) axiom.getArgument( 0 );
-				Rule rule = new Rule( name, consequent, antecedent );
-				kb.addRule( rule );
-			}
-		}
 		else {
 			throw new InternalReasonerException( "Unknown axiom " + axiom );
 		}
 	}
-	
 
-	private RuleAtom convertRuleAtom(ATermAppl term) {
-		RuleAtom atom = null;
-
-		if( term.getAFun().equals( ATermUtils.TYPEFUN ) ) {
-			ATermAppl i = (ATermAppl) term.getArgument( 0 );
-			AtomIObject io = convertAtomIObject( i );
-			ATermAppl c = (ATermAppl) term.getArgument( 1 );
-			
-			defineClass( c );
-			
-			atom = new ClassAtom( c, io );
-		}
-		else if( term.getAFun().equals( ATermUtils.PROPFUN ) ) {
-			ATermAppl p = (ATermAppl) term.getArgument( 0 );
-			ATermAppl i1 = (ATermAppl) term.getArgument( 1 );
-			ATermAppl i2 = (ATermAppl) term.getArgument( 2 );
-			AtomIObject io1 = convertAtomIObject( i1 );
-			
-			defineProperty( p );
-
-			if( originalKB.isObjectProperty( p ) ) {
-				kb.addObjectProperty( p );
-				AtomIObject io2 = convertAtomIObject( i2 );
-				atom = new IndividualPropertyAtom( p, io1, io2 );
-			}
-			else if( originalKB.isDatatypeProperty( p ) ) {
-				kb.addDatatypeProperty( p );
-				AtomDObject do2 = convertAtomDObject( i2 );
-				atom = new DatavaluedPropertyAtom( p, io1, do2 );
-			}
-			else {
-				throw new InternalReasonerException( "Unknown property " + p );
-			}
-		}
-		else if( term.getAFun().equals( ATermUtils.SAMEASFUN ) ) {
-			ATermAppl i1 = (ATermAppl) term.getArgument( 0 );
-			ATermAppl i2 = (ATermAppl) term.getArgument( 1 );
-			AtomIObject io1 = convertAtomIObject( i1 );
-			AtomIObject io2 = convertAtomIObject( i2 );
-			
-			atom = new SameIndividualAtom( io1, io2 );			
-		}
-		else if( term.getAFun().equals( ATermUtils.DIFFERENTFUN ) ) {
-			ATermAppl i1 = (ATermAppl) term.getArgument( 0 );
-			ATermAppl i2 = (ATermAppl) term.getArgument( 1 );
-			AtomIObject io1 = convertAtomIObject( i1 );
-			AtomIObject io2 = convertAtomIObject( i2 );
-			
-			atom = new DifferentIndividualsAtom( io1, io2 );			
-		}
-		else if( term.getAFun().equals( ATermUtils.BUILTINFUN ) ) {
-			ATermList args = (ATermList) term.getArgument( 0 );
-			ATermAppl builtin = (ATermAppl) args.getFirst();
-			List<AtomDObject> list = new ArrayList<AtomDObject>();
-			for( args = args.getNext(); !args.isEmpty(); args = args.getNext() ) {
-				ATermAppl arg = (ATermAppl) args.getFirst();
-				list.add( convertAtomDObject( arg ) );
-			}
-			
-			atom = new BuiltInAtom( builtin.toString(), list );			
-		}
-		else {
-			throw new InternalReasonerException( "Unknown rule atom " + term );
-		}
-
-		return atom;
-	}
-
-	private AtomIObject convertAtomIObject(ATermAppl t) {
-		if( ATermUtils.isVar( t ) )
-			return new AtomIVariable( ((ATermAppl) t.getArgument( 0 )).getName() );
-		else if( originalKB.isIndividual( t ) )
-			return new AtomIConstant( t );
-		else if( ATermUtils.isAnon( t ) )
-			return new AtomIConstant( t );
-
-		throw new InternalReasonerException( "Unrecognized term: " + t );
-	}
-
-	private AtomDObject convertAtomDObject(ATermAppl t) {
-		if( ATermUtils.isVar( t ) )
-			return new AtomDVariable( ((ATermAppl) t.getArgument( 0 )).getName() );
-		else if( ATermUtils.isLiteral( t ) )
-			return new AtomDConstant( t );		
-
-		throw new InternalReasonerException( "Unrecognized term: " + t );
-	}	
 
 	public KnowledgeBase build(Set<ATermAppl> axioms) {
 		reset();

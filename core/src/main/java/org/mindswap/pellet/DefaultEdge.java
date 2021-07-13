@@ -40,41 +40,41 @@ public class DefaultEdge implements Edge {
 	private Individual from;
 	private Node to;
 	private Role role;
-	
-	private DependencySet depends;
-	
-	public DefaultEdge(Role name, Individual from, Node to) {
+	private TimeDS depends;
+
+	public DefaultEdge(Role name, Individual from, Node to, TimeDS timeDS) {
 		this.role = name;
 		this.from = from;
 		this.to = to;
+		this.depends = timeDS;
 	}
-	
-	public DefaultEdge(Role name, Individual from, Node to, DependencySet d) {
-		this.role = name;
-		this.from = from;
-		this.to = to;
-		this.depends = d;
-	}
-	
+
 	/**
 	 * {@inheritDoc}
 	 */
 	public Node getNeighbor( Node node ) {
 		if( from.equals( node ) )
-            return to;
-        else if( to.equals( node ) )
-            return from;
-        else
-            return null;
+			return to;
+		else if( to.equals( node ) )
+			return from;
+		else
+			return null;
 	}
-	
+
 	public String toString() {
-		return "[" + from + ", " + role + ", " + to + "] - " + depends; 
+		return "[" + from + ", " + role + ", " + to + "] - " + depends;
+	}
+
+	public String printWithoutDS() {
+		return "[" + from + ", " + role + ", " + to + "]";
 	}
 	/**
 	 * {@inheritDoc}
 	 */
-	public DependencySet getDepends() {
+
+	public Time getTime() { return depends.time(); }
+
+	public TimeDS getDepends() {
 		return depends;
 	}
 	/**
@@ -95,23 +95,23 @@ public class DefaultEdge implements Edge {
 	public Node getTo() {
 		return to;
 	}
-	
-    public boolean equals(Object other) {
-        if(this == other) return true;
-        if(!(other instanceof DefaultEdge)) return false;
-        DefaultEdge that = (DefaultEdge) other;
-        return from.equals(that.from) && role.equals(that.role) && to.equals(that.to);
-    }
-    
-    public int hashCode() {
-        int hashCode = 23;
-        
-        hashCode = 31 * hashCode + role.hashCode();
-        hashCode = 31 * hashCode + from.hashCode();
-        hashCode = 31 * hashCode + to.hashCode();
-        
-        return hashCode;
-    }
+
+	public boolean equals(Object other) {
+		if(this == other) return true;
+		if(!(other instanceof DefaultEdge)) return false;
+		DefaultEdge that = (DefaultEdge) other;
+		return from.equals(that.from) && role.equals(that.role) && to.equals(that.to);
+	}
+
+	public int hashCode() {
+		int hashCode = 23;
+
+		hashCode = 31 * hashCode + role.hashCode();
+		hashCode = 31 * hashCode + from.hashCode();
+		hashCode = 31 * hashCode + to.hashCode();
+
+		return hashCode;
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -126,11 +126,12 @@ public class DefaultEdge implements Edge {
 	public ATermAppl getToName() {
 		return getTo().getName();
 	}
-	
+
 	/**
 	 * {@inheritDoc}
-	 */	
-	public void setDepends(DependencySet ds) {
-		depends = ds;
+	 */
+	public void setDepends(TimeDS timeDS) {
+		depends = timeDS;
 	}
+
 }

@@ -343,6 +343,7 @@ public class PelletReasoner implements OWLReasoner, OWLOntologyChangeListener  {
 		this.pendingChanges = new ArrayList<OWLOntologyChange>();
 		
 		refresh();
+		log.fine("Reasoner created");
 	}
 
 	private PelletRuntimeException convert(PelletRuntimeException e) throws InconsistentOntologyException,

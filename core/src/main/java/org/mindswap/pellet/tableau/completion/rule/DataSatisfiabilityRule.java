@@ -13,17 +13,9 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
 
-import org.mindswap.pellet.Clash;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Literal;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 
 import com.clarkparsia.pellet.datatypes.exceptions.DatatypeReasonerException;
 import com.clarkparsia.pellet.datatypes.exceptions.InvalidLiteralException;
@@ -47,14 +39,14 @@ import com.clarkparsia.pellet.datatypes.exceptions.InvalidLiteralException;
 public class DataSatisfiabilityRule extends AbstractTableauRule {
 
 	public DataSatisfiabilityRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.DATATYPE, BlockingType.NONE );
+		super( strategy, BlockingType.NONE );
 	}
 
 	public void apply(Individual ind) {
 		Set<Literal> nodes = new HashSet<Literal>();
 		LinkedList<Literal> pending = new LinkedList<Literal>();
 		Map<Literal, Set<Literal>> ne = new HashMap<Literal, Set<Literal>>();
-		DependencySet ds = DependencySet.EMPTY;
+		TimeDS ds = TimeDS.EMPTY();
 		boolean nePresent = false;
 		for( Iterator<Edge> it = ind.getOutEdges().iterator(); it.hasNext(); ) {
 			final Edge e = it.next();
@@ -117,8 +109,9 @@ public class DataSatisfiabilityRule extends AbstractTableauRule {
 			try {
 				if( !strategy.getABox().getDatatypeReasoner().isSatisfiable( nodes, ne ) ) {
 					for( Node n : nodes ) {
-						for( DependencySet typeDep : n.getDepends().values() )
-							ds = ds.union( typeDep, strategy.getABox().doExplanation() );
+						for( TimeDS typeDep : n.getDepends().values() ) {
+							ds = ds.union(typeDep, strategy.getABox().doExplanation());
+						}
 					}
 					/*
 					 * TODO: More descriptive clash
@@ -131,8 +124,9 @@ public class DataSatisfiabilityRule extends AbstractTableauRule {
 				if( PelletOptions.INVALID_LITERAL_AS_INCONSISTENCY ) {
 					log.fine( msg );
 					for( Node n : nodes ) {
-						for( DependencySet typeDep : n.getDepends().values() )
+						for( TimeDS typeDep : n.getDepends().values() ) {
 							ds = ds.union( typeDep, strategy.getABox().doExplanation() );
+						}
 					}
 					strategy.getABox().setClash( Clash.invalidLiteral( ind, ds ) );
 				}

@@ -136,9 +136,6 @@ public class PelletOptions {
 		IGNORE_UNSUPPORTED_AXIOMS = getBooleanProperty( newOptions, "IGNORE_UNSUPPORTED_AXIOMS",
 				IGNORE_UNSUPPORTED_AXIOMS, oldOptions );
 
-		MAINTAIN_COMPLETION_QUEUE = getBooleanProperty( newOptions, "MAINTAIN_COMPLETION_QUEUE",
-				MAINTAIN_COMPLETION_QUEUE, oldOptions );
-
 		MAX_ANONYMOUS_CACHE = getIntProperty( newOptions, "MAX_ANONYMOUS_CACHE",
 				MAX_ANONYMOUS_CACHE, oldOptions );
 
@@ -203,20 +200,12 @@ public class PelletOptions {
 		USE_CLASSIFICATION_MONITOR = getEnumProperty( newOptions, "USE_CLASSIFICATION_MONITOR",
 				USE_CLASSIFICATION_MONITOR, oldOptions );
 
-		USE_COMPLETION_QUEUE = getBooleanProperty( newOptions, "USE_COMPLETION_QUEUE",
-				USE_COMPLETION_QUEUE, oldOptions );
-
 		USE_CONTINUOUS_RULES = getBooleanProperty( newOptions, "USE_CONTINUOUS_RULES",
 				USE_CONTINUOUS_RULES, oldOptions );
 
 		USE_FULL_DATATYPE_REASONING = getBooleanProperty( newOptions,
 				"USE_FULL_DATATYPE_REASONING", USE_FULL_DATATYPE_REASONING, oldOptions );
 
-		USE_INCREMENTAL_CONSISTENCY = getBooleanProperty( newOptions,
-				"USE_INCREMENTAL_CONSISTENCY", USE_INCREMENTAL_CONSISTENCY, oldOptions );
-
-		USE_INCREMENTAL_DELETION = getBooleanProperty( newOptions, "USE_INCREMENTAL_DELETION",
-				USE_INCREMENTAL_DELETION, oldOptions );
 
 		USE_NAIVE_QUERY_ENGINE = getBooleanProperty( newOptions, "USE_NAIVE_QUERY_ENGINE",
 				USE_NAIVE_QUERY_ENGINE, oldOptions );
@@ -547,7 +536,7 @@ public class PelletOptions {
 	 * of a subclass is removed. Both techniques have advantages and
 	 * disadvantages. Best performance depends on the ontology characteristics.
 	 */
-	public static boolean								REALIZE_INDIVIDUAL_AT_A_TIME			= false;
+	public static boolean								REALIZE_INDIVIDUAL_AT_A_TIME			= true;
 	
 	/**
 	 * When this options is set, all the individuals in the KB are realized automatically
@@ -707,13 +696,6 @@ public class PelletOptions {
 	 */
 	public static boolean								USE_COMPLETION_QUEUE					= false;
 
-	/**
-	 * Flag set if the optimized basic completion queue should be used. The
-	 * difference between the basic completion queue is that it maintains queues
-	 * of individuals for each rule type. In contrast the basic completion queue
-	 * simply one list of individuals which all rules iterate over
-	 */
-	public static boolean								USE_OPTIMIZED_BASIC_COMPLETION_QUEUE	= false && USE_COMPLETION_QUEUE;
 
 	/**
 	 * During backjumping use dependency set information to restore node labels
@@ -721,37 +703,6 @@ public class PelletOptions {
 	 */
 	public static boolean								USE_SMART_RESTORE						= true;
 
-	/**
-	 * Flag set if incremental consistency checking should be used. Currently it
-	 * can only be used on KBs with SHIQ or SHOQ expressivity
-	 */
-	public static boolean								USE_INCREMENTAL_CONSISTENCY				= false && USE_COMPLETION_QUEUE;
-
-	/**
-	 * Flag set if incremental support for deletions should be used. Currently
-	 * it can only be used on KBs with SHIQ or SHOQ expressivity. This flag is
-	 * used as incremental deletions introduces memory overhead, which may not
-	 * be suitable for some KBs
-	 */
-	public static boolean								USE_INCREMENTAL_DELETION				= false
-																										&& USE_INCREMENTAL_CONSISTENCY
-																										&& USE_TRACING;
-
-	/**
-	 * Flag if the completion queue should be maintained through incremental
-	 * deletions. It can be the case that a removal of a syntactic assertion
-	 * will require a queue element to be removed, as it is no longer
-	 * applicable. If this is set to false then a simple check before each rule
-	 * is fired will be performed - if the ds for the label is null, then the
-	 * rule will not be fired. If this is set to true and tracing is on, then
-	 * the queue will be maintained through deletions. TODO: Note currently the
-	 * queue maintenance is not implemented, so this should always be FALSE!
-	 * <p>
-	 * <b>*********** DO NOT CHANGE THE VALUE OF THIS OPTION **************</b>
-	 */
-	public static boolean								MAINTAIN_COMPLETION_QUEUE				= false
-																										&& USE_TRACING
-																										&& USE_COMPLETION_QUEUE;
 
 	/**
 	 * Use (if applicable) special optimization for completely defined (CD)
@@ -810,7 +761,12 @@ public class PelletOptions {
 	 * modified. Annotation classes from OBO are included by default.   
 	 */
 	public static boolean 								IGNORE_ANNOTATION_CLASSES				= true;
-	
+
+	public static boolean 								SPECIAL_LOGS							= false;
+	public static boolean 								RESTORE_LOGS							= false;
+	public static boolean								ADD_LOGS								= false;
+
+
 	static {
 		String configFile = System.getProperty( "pellet.configuration" );
 

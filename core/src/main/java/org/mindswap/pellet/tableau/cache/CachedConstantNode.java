@@ -8,11 +8,10 @@ package org.mindswap.pellet.tableau.cache;
 
 import java.util.Map;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.EdgeList;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 
 import aterm.ATermAppl;
+import aterm.ATerm;
 
 /**
  * <p>
@@ -69,7 +68,11 @@ public class CachedConstantNode implements CachedNode {
 	/**
 	 * {@inheritDoc}
 	 */
-	public Map<ATermAppl, DependencySet> getDepends() {
+	public Map<ATermAppl, TimeDS> getDepends() {
+		throw new UnsupportedOperationException();
+	}
+
+	public TimeDS getTimeDS(ATerm c) {
 		throw new UnsupportedOperationException();
 	}
 

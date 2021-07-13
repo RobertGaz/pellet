@@ -12,12 +12,8 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 import org.mindswap.pellet.tbox.impl.Unfolding;
 import org.mindswap.pellet.utils.ATermUtils;
 
@@ -43,7 +39,7 @@ public class UnfoldingRule extends AbstractTableauRule {
     public final static Logger log = Logger.getLogger( UnfoldingRule.class.getName() );
 
 	public UnfoldingRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.ATOM, BlockingType.COMPLETE );
+		super( strategy, BlockingType.COMPLETE );
 	}
     
     public void apply( Individual node ) {
@@ -55,8 +51,8 @@ public class UnfoldingRule extends AbstractTableauRule {
         for( int j = node.applyNext[Node.ATOM]; j < size; j++ ) {
             ATermAppl c = types.get( j );
 
-            if(!PelletOptions.MAINTAIN_COMPLETION_QUEUE && node.getDepends(c) == null)
-				continue;
+            if(node.getDepends(c).isEmpty())
+                throw new RuntimeException("strange");
             
             applyUnfoldingRule( node, c );
             
@@ -71,31 +67,36 @@ public class UnfoldingRule extends AbstractTableauRule {
     }
     
     protected void applyUnfoldingRule( Individual node, ATermAppl c ) {
-    	DependencySet ds = node.getDepends( c );
+    	TimeDS ds = node.getDepends( c );
         
-        if(!PelletOptions.MAINTAIN_COMPLETION_QUEUE && ds == null)
-			return;           	
+        if(ds.isEmpty())
+            throw new RuntimeException("strange");
         
         Iterator<Unfolding> unfoldingList = strategy.getTBox().unfold( c );
 
         while( unfoldingList.hasNext() ) {
 			Unfolding unfolding = unfoldingList.next();
         	ATermAppl unfoldingCondition = unfolding.getCondition();
-        	DependencySet finalDS = node.getDepends( unfoldingCondition );
+        	TimeDS finalDS = node.getDepends( unfoldingCondition );
         	
         	if( finalDS == null )
         		continue;
-        	
-			Set<ATermAppl> unfoldingDS = unfolding.getExplanation();  
-        	finalDS = finalDS.union( ds, strategy.getABox().doExplanation() );
-        	finalDS = finalDS.union( unfoldingDS, strategy.getABox().doExplanation() );
-        	
-			ATermAppl unfoldedConcept = unfolding.getResult();          	
-        	
-            if( log.isLoggable( Level.FINE ) && !node.hasType( unfoldedConcept ) )
-                log.fine( "UNF : " + node + ", " + ATermUtils.toString(c) + " -> " + ATermUtils.toString( unfoldedConcept ) + " - " + finalDS );
 
-            strategy.addType( node, unfoldedConcept, finalDS );
+			finalDS = TimeDS.intersection(finalDS, ds, strategy.getABox().doExplanation());
+			if (!finalDS.isEmpty()) {
+                Set<ATermAppl> unfoldingDS = unfolding.getExplanation();
+                finalDS.addExplain(new DependencySet(unfoldingDS), strategy.getABox().doExplanation());
+
+                ATermAppl unfoldedConcept = unfolding.getResult();
+                finalDS.subtract(node.getDepends(unfoldedConcept).time());
+
+                if (!finalDS.isEmpty()) {
+                    log.info("UNF   " + node + " : " + ATermUtils.toString(c) + " -> " + ATermUtils.toString(unfoldedConcept) + " ON " + finalDS);
+                    strategy.skipNextAddLog();
+                }
+
+                strategy.addType(node, unfoldedConcept, finalDS);
+            }
         }
     }
 }

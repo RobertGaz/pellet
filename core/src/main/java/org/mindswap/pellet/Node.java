@@ -30,22 +30,12 @@
 
 package org.mindswap.pellet;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.Map.Entry;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
-import org.mindswap.pellet.tableau.completion.queue.QueueElement;
 import org.mindswap.pellet.utils.ATermUtils;
 import org.mindswap.pellet.utils.Bool;
 import org.mindswap.pellet.utils.SetUtils;
@@ -65,7 +55,7 @@ public abstract class Node {
 	
 	public final static int BLOCKABLE = Integer.MAX_VALUE;
 	public final static int NOMINAL   = 0;
-	
+
 	public final static int CHANGED   = 0x7F;
 	public final static int UNCHANGED = 0x00;
 	public final static int ATOM = 0;
@@ -79,7 +69,7 @@ public abstract class Node {
 	
 	protected ABox abox;
 	protected ATermAppl name;
-	protected Map<ATermAppl, DependencySet> depends;
+	protected Map<ATermAppl, TimeDS> depends;
 	private boolean isRoot;
 	private boolean isConceptRoot;		
 	
@@ -95,9 +85,9 @@ public abstract class Node {
 	/**
 	 * Dependency information about why merged happened (if at all)
 	 */
-	protected DependencySet mergeDepends = null;
+	protected TimeDS mergeDepends = null;
 	
-	protected DependencySet pruned = null;
+	protected TimeDS pruned = null;
 	
 	/**
 	 * Set of other nodes that have been merged to this node. Note that this 
@@ -106,7 +96,7 @@ public abstract class Node {
 	 */
 	protected Set<Node> merged;
 	
-	protected Map<Node, DependencySet> differents;
+	protected Map<Node, TimeDS> differents;
 	
 	protected Node(ATermAppl name, ABox abox) {
 		this.name = name;
@@ -115,7 +105,7 @@ public abstract class Node {
 		isRoot = !ATermUtils.isAnon( name );
 		isConceptRoot = false;
 		
-		mergeDepends = DependencySet.INDEPENDENT; 
+		mergeDepends = TimeDS.INDEPENDENT();
 		differents = CollectionUtils.makeMap();
 		depends = CollectionUtils.makeMap();
 
@@ -155,8 +145,8 @@ public abstract class Node {
 	protected void updateNodeReferences() {
         mergedTo = abox.getNode( mergedTo.getName() );
 
-        Map<Node, DependencySet> diffs = new HashMap<Node, DependencySet>( differents.size() );
-        for(Map.Entry<Node, DependencySet> entry : differents.entrySet() ) {
+        Map<Node, TimeDS> diffs = new HashMap<Node, TimeDS>( differents.size() );
+        for(Map.Entry<Node, TimeDS> entry : differents.entrySet() ) {
             Node node = entry.getKey();
 
             diffs.put( abox.getNode( node.getName() ), entry.getValue() );
@@ -169,20 +159,20 @@ public abstract class Node {
                 sames.add( abox.getNode( node.getName() ) );
             }
             merged = sames;
-        }        
-        
-        EdgeList oldEdges = inEdges;
-        inEdges = new EdgeList(oldEdges.size());
-        for(int i = 0; i < oldEdges.size(); i++) {
-            Edge edge = oldEdges.edgeAt(i);
-            
-            Individual from = abox.getIndividual( edge.getFrom().getName() );
-			Edge newEdge = new DefaultEdge( edge.getRole(), from, this, edge.getDepends() );
-			
-			inEdges.addEdge( newEdge );	      
-			if( !isPruned() ) 
-				from.getOutEdges().addEdge( newEdge );
         }
+
+		EdgeList oldEdges = inEdges;
+		inEdges = new EdgeList(oldEdges.size());
+		for(int i = 0; i < oldEdges.size(); i++) {
+			Edge edge = oldEdges.edgeAt(i);
+
+			Individual from = abox.getIndividual( edge.getFrom().getName() );
+			Edge newEdge = new DefaultEdge( edge.getRole(), from, this, edge.getDepends() );
+
+			inEdges.addEdge( newEdge );
+			if( !isPruned() )
+				from.getOutEdges().addEdge( newEdge );
+		}
     }
 
 	/**
@@ -191,15 +181,7 @@ public abstract class Node {
 	 *  
 	 * @param type type of concepts that need to be rechecked
 	 */
-	public void setChanged(int type) {		
-		//Check if we need to updated the completion queue 
-		//Currently we only updated the changed lists for checkDatatypeCount()
-		QueueElement newElement = new QueueElement(this);
-
-		//update the datatype queue
-		if( (type == Node.ALL || type == Node.MIN) && PelletOptions.USE_COMPLETION_QUEUE )
-			abox.getCompletionQueue().add( newElement, NodeSelector.DATATYPE );		
-
+	public void setChanged(int type) {
 		// add node to effected list
 		if( abox.getBranch() >= 0 && PelletOptions.TRACK_BRANCH_EFFECTS )
 			abox.getBranchEffectTracker().add( abox.getBranch(), this.getName() );
@@ -240,7 +222,7 @@ public abstract class Node {
 	public abstract Node copyTo(ABox abox);
 	
 	protected void addInEdge(Edge edge) {
-        inEdges.addEdge( edge );   
+        inEdges.addEdge( edge );
     }
 
     public EdgeList getInEdges() {
@@ -263,23 +245,21 @@ public abstract class Node {
 
     public void reset(boolean onlyApplyTypes) {
     	assert onlyApplyTypes || isRootNominal() : "Only asserted individuals can be reset: " + this;
-    	
-		if( PelletOptions.USE_COMPLETION_QUEUE )
-			abox.getCompletionQueue().add( new QueueElement( this ) );
-		
+
 		if( onlyApplyTypes )
 			return;
 		
-		if( pruned != null )
+		if( isPruned() )
 			unprune( DependencySet.NO_BRANCH );
 		
     	mergedTo = this;
-    	mergeDepends = DependencySet.INDEPENDENT;
+    	mergeDepends = TimeDS.INDEPENDENT();
     	merged = null;
-    	
-    	Iterator<DependencySet> i = differents.values().iterator();
+
+    	//а  тут мы оставляем, ведь речь о differents
+    	Iterator<TimeDS> i = differents.values().iterator();
     	while( i.hasNext()) {
-    		DependencySet d = i.next();
+			TimeDS d = i.next();
 			if( d.getBranch() != DependencySet.NO_BRANCH ) {
 				i.remove();
 			}			    
@@ -289,51 +269,39 @@ public abstract class Node {
     	
     	inEdges.reset();
     }
-    
+
+    //РОБЕРТ
     protected void resetTypes() {
-    	Iterator<DependencySet> i = depends.values().iterator();
+    	Iterator<TimeDS> i = depends.values().iterator();
     	while( i.hasNext()) {
-    		DependencySet d = i.next();
-			if( d.getBranch() != DependencySet.NO_BRANCH ) {
-				i.remove();
-			}			    
+    		TimeDS d = i.next();
+//			if( d.getBranch() != DependencySet.NO_BRANCH ) {
+//				i.remove();
+//			}
 		}
     }
     
-	public Boolean restorePruned(int branch) {		
+	public Boolean restorePruned(int branch, Time time) {
 
 		if( PelletOptions.TRACK_BRANCH_EFFECTS )
 			abox.getBranchEffectTracker().add( abox.getBranch(), name );
 
-		if( pruned != null ) {
-			if( pruned.getBranch() > branch ) {			
-				if( log.isLoggable( Level.FINE ) ) 
-				    log.fine("RESTORE: " + this + " merged node " + mergedTo + " " + mergeDepends);
-				
-				if( mergeDepends.getBranch() > branch )
-				    undoSetSame();
-				
-				unprune( branch );
+		if( isPruned() ) {
+			if (pruned.restoreByBranch(branch, time) && pruned.isEmpty()) {
+				if (PelletOptions.RESTORE_LOGS)
+					log.info("RESTORE: " + this + " merged node " + mergedTo + " " + mergeDepends);
+//						(!PelletOptions.SPECIAL_LOGS ? " " + mergeDepends : ""));
 
-				if( PelletOptions.USE_INCREMENTAL_CONSISTENCY )
-					abox.getIncrementalChangeTracker().addUnprunedNode( this );
-
-				// we may need to remerge this node
-				if( this instanceof Individual ) {
-					final Individual ind = (Individual) this;
-
-					if( PelletOptions.USE_COMPLETION_QUEUE ) {
-						ind.applyNext[Node.NOM] = 0;
-						abox.getCompletionQueue().add( new QueueElement( this ),
-								NodeSelector.NOMINAL );
-					}
-
+				if (mergeDepends.restoreByBranch(branch, time) && mergeDepends.isEmpty()) {
+					undoSetSame();
 				}
 
+				unprune(branch);
+
 				return Boolean.TRUE;
-			}
-			else {
-				if( log.isLoggable( Level.FINE ) ) 
+
+			} else {
+				if( log.isLoggable( Level.FINE ) )
 					log.fine("DO NOT RESTORE: pruned node " + this + " = " + mergedTo + " " + mergeDepends);	
 
 				return Boolean.FALSE;
@@ -344,56 +312,42 @@ public abstract class Node {
 	}
 	
 	
-	public boolean restore(int branch) {		
-
+	public boolean restore(int branch, Time time) {
+		if (this.toString().equals("Delicate")&&branch==117) {
+			System.out.println("123");
+		}
 		if( PelletOptions.TRACK_BRANCH_EFFECTS )
 			abox.getBranchEffectTracker().add( abox.getBranch(), name );
 
 		boolean restored = false;
 		
-		List<ATermAppl> conjunctions = new ArrayList<ATermAppl>();
+		List<ATermAppl> conjunctions = new ArrayList<>();
 
-		
-		boolean removed = false;
-		
 		for( Iterator<ATermAppl> i = getTypes().iterator(); i.hasNext(); ) {									
 			ATermAppl c = i.next();	
-			DependencySet d = getDepends(c);
-			
-			boolean removeType = PelletOptions.USE_SMART_RESTORE
-//                ? ( !d.contains( branch ) )
-                ? ( d.max() >= branch )
-				: ( d.getBranch() > branch );  
+			TimeDS timeDS = getDepends(c);
 
-			if( removeType ) {
-				removed = true;
-				
-				if( log.isLoggable( Level.FINE ) ) 
-                    log.fine("RESTORE: " + this + " remove type " + c + " " + d + " " + branch);
-				
-				//track that this node is affected
-				if( PelletOptions.USE_INCREMENTAL_CONSISTENCY && this instanceof Individual ) {
-					abox.getIncrementalChangeTracker().addDeletedType( this, c );
-				}
-								
-				i.remove();
-				removeType(c);
-				restored = true;
+			boolean restoredTimeDS;
+			if (PelletOptions.USE_SMART_RESTORE) {
+				restoredTimeDS = timeDS.restoreByMax(branch, time);
+			} else {
+				restoredTimeDS = timeDS.restoreByBranch(branch, time);
 			}
-			else if( PelletOptions.USE_SMART_RESTORE && ATermUtils.isAnd( c ) ) {
-			    conjunctions.add( c );
-			}			    
-		}			
-		
-		//update the queue with things that could readd this type
-		if( removed && PelletOptions.USE_COMPLETION_QUEUE && this instanceof Individual ) {
-			Individual ind = (Individual)this;
-			ind.applyNext[Node.ATOM] = 0;
-			ind.applyNext[Node.OR] = 0;
-			
-			QueueElement qe = new QueueElement( this );
-			abox.getCompletionQueue().add( qe, NodeSelector.DISJUNCTION );
-			abox.getCompletionQueue().add( qe, NodeSelector.ATOM );
+
+			if (restoredTimeDS) {
+				restored = true;
+				if (timeDS.isEmpty()) {
+					if (PelletOptions.RESTORE_LOGS)
+						log.info("RESTORE: " + this + " remove type " + ATermUtils.toString(c));
+					i.remove();
+					removeType(c);
+				} else {
+					if (PelletOptions.RESTORE_LOGS)
+						log.info("RESTORE: " + this + " removed some time for type " + ATermUtils.toString(c));
+				}
+			} else if( PelletOptions.USE_SMART_RESTORE && ATermUtils.isAnd( c ) ) {
+				conjunctions.add( c );
+			}
 		}
 
 		
@@ -404,61 +358,65 @@ public abstract class Node {
 		if( PelletOptions.USE_SMART_RESTORE ) {
 			for( Iterator<ATermAppl> i = conjunctions.iterator(); i.hasNext(); ) {
 				ATermAppl c = i.next();
-				DependencySet d = getDepends(c);
+				TimeDS timeDS = getDepends(c);
 				for(ATermList cs = (ATermList) c.getArgument(0); !cs.isEmpty(); cs = cs.getNext()) {
 					ATermAppl conj = (ATermAppl) cs.getFirst();
-					
-					addType(conj, d);
+					addType(conj, timeDS);
 				}            
 	        }
-		}        
-        
-		for( Iterator<Entry<Node,DependencySet>> i = differents.entrySet().iterator(); i.hasNext(); ) {
-			Entry<Node,DependencySet> entry = i.next();
-			Node node = entry.getKey();
-			DependencySet d = entry.getValue();
+		}
 
-			if( d.getBranch() > branch ) {			
-				if( log.isLoggable( Level.FINE ) ) 
-					log.fine("RESTORE: " + name + " delete difference " + node);
+		for( Iterator<Entry<Node,TimeDS>> i = differents.entrySet().iterator(); i.hasNext(); ) {
+			Entry<Node,TimeDS> entry = i.next();
+			Node node = entry.getKey();
+			TimeDS timeDS = entry.getValue();
+
+			if( timeDS.ds().getBranch() > branch ) {
+				if (PelletOptions.RESTORE_LOGS)
+					log.info("RESTORE: " + ATermUtils.toString(name) + " delete difference " + node);
 				i.remove();
 				restored = true;
-			}			
+			}
+
+//			if (timeDS.restoreByBranch(branch, time)) {
+//				restored = true;
+//				if (timeDS.isEmpty()) {
+//					log.info("RESTORE: " + ATermUtils.toString(name) + " delete difference " + node);
+//					i.remove();
+//				}
+//			}
+
 		}
-		
-		removed = false;
+
 		for( Iterator<Edge> i = inEdges.iterator(); i.hasNext(); ) {
 			Edge e = i.next();
-			DependencySet d = e.getDepends();
-            
-			if( d.getBranch() > branch ) {           
-				if( log.isLoggable( Level.FINE ) ) 
-					log.fine("RESTORE: " + name + " delete reverse edge " + e);
-                
-				if( PelletOptions.USE_INCREMENTAL_CONSISTENCY )
-					abox.getIncrementalChangeTracker().addDeletedEdge( e );
+			TimeDS timeDS = e.getDepends();
 
-				i.remove();
+			if (timeDS.restoreByBranch(branch, time)) {
 				restored = true;
-				removed = true;
-			}           
-		}
-		
-		if( removed && PelletOptions.USE_COMPLETION_QUEUE ) {
-			QueueElement qe = new QueueElement( this );
-			abox.getCompletionQueue().add( qe, NodeSelector.EXISTENTIAL );
-			abox.getCompletionQueue().add( qe, NodeSelector.MIN_NUMBER );
+				if (timeDS.isEmpty()) {
+					if (PelletOptions.RESTORE_LOGS)
+						log.info("RESTORE: " + ATermUtils.toString(name) + " delete reverse edge " + (!PelletOptions.SPECIAL_LOGS ? e : ((DefaultEdge) e).printWithoutDS()));
+					i.remove();
+				} else {
+					if (PelletOptions.RESTORE_LOGS)
+						log.fine("RESTORE: " + ATermUtils.toString(name) + " removed some time of reverse edge");
+				}
+			}
 		}
 
 		return restored;
 	}
-	
-	public void addType(ATermAppl c, DependencySet ds) {
-	    if( isPruned() )
-	        throw new InternalReasonerException( "Adding type to a pruned node " + this + " " + c );
-	    else if( isMerged() )
-	        return;
-	    
+
+	public TimeDS addType(ATermAppl c, TimeDS timeDS) {
+		if (isPruned())
+			throw new InternalReasonerException("Adding type to a pruned node " + this + " " + c);
+		else if (isMerged())
+			return null;
+		if (timeDS.isEmpty()) {
+			return null;
+		}
+
 	    // add to effected list
 	    if( abox.getBranch() >= 0 && PelletOptions.TRACK_BRANCH_EFFECTS ) {
 			abox.getBranchEffectTracker().add( abox.getBranch(), this.getName() );
@@ -466,13 +424,20 @@ public abstract class Node {
 		
 		int b = abox.getBranch();
 		
-		int max = ds.max();
+		int max = timeDS.max();
 		if(b == -1 && max != 0)
 		    b = max + 1;
-		ds = ds.copy( b );
-		depends.put(c, ds);
-		
-		abox.setChanged( true );
+
+		timeDS = timeDS.copy( b );
+
+		depends.putIfAbsent(c, TimeDS.empty());
+		TimeDS added = depends.get(c).add(timeDS);
+
+		if (!added.isEmpty()) {
+			abox.setChanged(true);
+			return added;
+		}
+		return null;
 	}
 
 	public boolean removeType(ATermAppl c) {
@@ -484,24 +449,21 @@ public abstract class Node {
 	}
 	
 	public Bool hasObviousType(ATermAppl c) {
-		DependencySet ds = getDepends( c );
+		TimeDS ds = getDepends( c );
 
 		if( ds != null ) {
 			if( ds.isIndependent() ) {
 				return Bool.TRUE;
 			}
-		}
-		else if( (ds = getDepends(ATermUtils.negate(c))) != null ) { 
+		} else if( (ds = getDepends(ATermUtils.negate(c))) != null ) {
 			if( ds.isIndependent() ) {
 				return Bool.FALSE;
 			}
-		}
-		else if( isIndividual() && ATermUtils.isNominal( c ) ) {
+		} else if( isIndividual() && ATermUtils.isNominal( c ) ) {
 			// TODO probably redundant if : Bool.FALSE
 			if( !c.getArgument( 0 ).equals( this.getName() ) ) {
 				return Bool.FALSE;
-			}
-			else {
+			} else {
 				return Bool.TRUE;
 			}
 		}
@@ -535,6 +497,8 @@ public abstract class Node {
 
 				Bool ot = Bool.FALSE;
 
+				Time time = new Time();
+
 				for( int e = 0; e < edges.size(); e++ ) {
 					Edge edge = edges.edgeAt( e );
 
@@ -548,12 +512,18 @@ public abstract class Node {
 					// TODO all this stuff in one method - this is only for
 					// handling AND
 					// clauses - they are implemented in abox.isKnownType
-					ot = ot.or( abox.isKnownType( y, d, SetUtils.<ATermAppl>emptySet() ) );// y.hasObviousType(d));
 
-					if( ot.isTrue() ) {
-						return ot;
+					Bool condition = abox.isKnownType( y, d, SetUtils.<ATermAppl>emptySet());
+					ot = ot.or(condition);// y.hasObviousType(d));
+
+					if (condition.isTrue()) {
+						time.unite(edge.getTime());
+						if (time.isUniversal()) {
+							break;
+						}
 					}
 				}
+				abox.setIsTypeTime(time);
 				return ot;
 			}
 		}
@@ -564,8 +534,8 @@ public abstract class Node {
 	public boolean hasObviousType( Collection<ATermAppl> coll ) {
 		for(Iterator<ATermAppl> i = coll.iterator(); i.hasNext();) {
             ATermAppl c = i.next();
-            
-    		DependencySet ds = getDepends( c );
+
+			TimeDS ds = getDepends( c );
     		
     		if( ds != null && ds.isIndependent() )
     			return true;
@@ -580,16 +550,34 @@ public abstract class Node {
 	
 	public abstract boolean hasSuccessor( Node x );
 	
-	public abstract DependencySet getNodeDepends();
-	
-	public DependencySet getDepends(ATerm c) {
-		return depends.get(c);
-	}
-	
-	public Map<ATermAppl,DependencySet> getDepends() {
+	public abstract TimeDS getNodeDepends();
+
+	public abstract void setNodeDepends(TimeDS timeDS);
+
+	public Map<ATermAppl, TimeDS> getDepends() {
 		return depends;
 	}
-	
+
+	public TimeDS getDepends(ATerm c) {
+		TimeDS result = depends.get(c);
+//		if (result != null && result.isEmpty()) {
+//			throw new RuntimeException();
+//		}
+		if (result == null) {
+			result = TimeDS.empty();
+		}
+
+		return result;
+
+	}
+
+	public TimeDS getDepends(ATerm c, Time time) {
+		if (!depends.containsKey(c)) {
+			return null;
+		}
+		return depends.get(c).partBy(time);
+	}
+
 	public Set<ATermAppl> getTypes() {
 		return depends.keySet();
 	}	
@@ -603,25 +591,23 @@ public abstract class Node {
 	}
 	
 	public boolean isPruned() {
-		return pruned != null;
+		return pruned != null && !pruned.isEmpty();
 	}
 	
-	public DependencySet getPruned() {
+	public TimeDS getPruned() {
 		return pruned;
 	}
 		
-	public abstract void prune(DependencySet ds);
+	public abstract void prune(TimeDS ds);
 
 	public void unprune( int branch ) {
         pruned = null;
-
-        boolean added = false;
         
         for(int i = 0; i < inEdges.size(); i++) {
             Edge edge = inEdges.edgeAt( i );
-            DependencySet d = edge.getDepends();
 
-            if( d.getBranch() <= branch ) {
+			TimeDS ds = edge.getDepends();
+            if( ds.getBranch() <= branch ) {
                 Individual pred = edge.getFrom();
                 Role role = edge.getRole();
 
@@ -633,37 +619,14 @@ public abstract class Node {
 
                     // update affected
 					if( PelletOptions.TRACK_BRANCH_EFFECTS ) {
-						abox.getBranchEffectTracker().add( d.getBranch(), pred.name );
-						abox.getBranchEffectTracker().add( d.getBranch(), name );
+						abox.getBranchEffectTracker().add( ds.getBranch(), pred.name );
+						abox.getBranchEffectTracker().add( ds.getBranch(), name );
 					}
-                    
-                    if( PelletOptions.USE_COMPLETION_QUEUE ){
-                    		added = true;
-                    		pred.applyNext[Node.MAX] = 0;
-                    		
-                    		QueueElement qe = new QueueElement( pred );
-                			abox.getCompletionQueue().add( qe, NodeSelector.MAX_NUMBER );
-                			abox.getCompletionQueue().add( qe, NodeSelector.GUESS );
-                			abox.getCompletionQueue().add( qe, NodeSelector.CHOOSE );
-                			abox.getCompletionQueue().add( qe, NodeSelector.UNIVERSAL );       
-                    }
-                    
-                    if( log.isLoggable( Level.FINE ) ) 
-                        log.fine( "RESTORE: " + name + " ADD reverse edge " + edge );
+
+					if (PelletOptions.RESTORE_LOGS)
+						log.info( "RESTORE: " + ATermUtils.toString(name) + " add reverse edge " + (!PelletOptions.SPECIAL_LOGS ? edge : ((DefaultEdge) edge).printWithoutDS()));
                 }
             }
-        }
-        
-        if( added ){
-	        if( this instanceof Individual ){
-	    			Individual ind = (Individual)this;
-	    			ind.applyNext[Node.MAX] = 0;
-	    			QueueElement qe = new QueueElement( ind );
-	    			abox.getCompletionQueue().add( qe, NodeSelector.MAX_NUMBER );
-	    			abox.getCompletionQueue().add( qe, NodeSelector.GUESS );
-	    			abox.getCompletionQueue().add( qe, NodeSelector.CHOOSE );
-	    			abox.getCompletionQueue().add( qe, NodeSelector.UNIVERSAL );       
-	        }
         }
     }
 
@@ -700,14 +663,14 @@ public abstract class Node {
      * first step or the union of all steps.
      *
      */
-    public DependencySet getMergeDependency( boolean all ) {
+    public TimeDS getMergeDependency( boolean all ) {
         if( !isMerged() || !all )
             return mergeDepends;
 
-        DependencySet ds = mergeDepends;
+		TimeDS ds = mergeDepends;
         Node node = mergedTo;
         while( node.isMerged() ) {
-            ds = ds.union( node.mergeDepends, abox.doExplanation() );
+            ds = TimeDS.union( ds, node.mergeDepends, abox.doExplanation() );
             node = node.mergedTo;            
         }
         
@@ -723,7 +686,7 @@ public abstract class Node {
 	
 	public void undoSetSame() {
 		mergedTo.removeMerged( this );
-		mergeDepends = DependencySet.INDEPENDENT;
+		mergeDepends = TimeDS.INDEPENDENT();
 		mergedTo = this;	    
 	}
 	
@@ -739,18 +702,18 @@ public abstract class Node {
 	    return merged;
 	}
 	
-	public Map<Node,DependencySet> getAllMerged() {
-		Map<Node,DependencySet> result = new HashMap<Node,DependencySet>();
-		getAllMerged( DependencySet.INDEPENDENT, result );
+	public Map<Node,TimeDS> getAllMerged() {
+		Map<Node,TimeDS> result = new HashMap<Node,TimeDS>();
+		getAllMerged( TimeDS.INDEPENDENT(), result );
 		return result;
 	}
 	
-	private void getAllMerged(DependencySet ds, Map<Node,DependencySet> result) {
+	private void getAllMerged(TimeDS ds, Map<Node,TimeDS> result) {
 		if ( merged == null )
 			return;
 		
 		for( Node mergedNode : merged ) {
-			DependencySet mergeDS = ds.union( mergedNode.getMergeDependency( false ), false );
+			TimeDS mergeDS = TimeDS.union(ds, mergedNode.getMergeDependency( false ), false );
 			result.put( mergedNode, mergeDS );
 			mergedNode.getAllMerged( mergeDS, result );
 		}		
@@ -762,21 +725,16 @@ public abstract class Node {
 	        merged = null; // free space
 	}
 	
-	public boolean setSame(Node node, DependencySet ds) {
+	public boolean setSame(Node node, TimeDS mergeDS) {
 		if( isSame( node ) ) 
 		    return false;
         if( isDifferent( node ) ) {
-        		//CHW - added for incremental reasoning support - this is needed as we will need to backjump if possible
-        		if(PelletOptions.USE_INCREMENTAL_CONSISTENCY)
-        			abox.setClash( Clash.nominal( this, ds.union(this.mergeDepends, abox.doExplanation()).union(node.mergeDepends, abox.doExplanation()), node.getName() ));
-        		else
-        			abox.setClash( Clash.nominal( this, ds, node.getName() ) );
-        		
+        	abox.setClash( Clash.nominal( this, mergeDS, node.getName() ) );
 		    return false;
 		}
 		
 		mergedTo = node;
-		mergeDepends = ds.copy( abox.getBranch() );
+		mergeDepends = mergeDS.copy( abox.getBranch() );
 		node.addMerged( this );
 		return true;
 	}
@@ -793,11 +751,11 @@ public abstract class Node {
 		return differents.keySet();
 	}
 
-	public DependencySet getDifferenceDependency(Node node) {
+	public TimeDS getDifferenceDependency(Node node) {
 		return differents.get(node);
 	}	
 
-	public boolean setDifferent(Node node, DependencySet ds) {
+	public boolean setDifferent(Node node, TimeDS ds) {
 
 		// add to effected list
 		if( abox.getBranch() >= 0 && PelletOptions.TRACK_BRANCH_EFFECTS )
@@ -806,8 +764,8 @@ public abstract class Node {
 		if( isDifferent( node ) )
 			return false;
 		if( isSame( node ) ) {
-			ds = ds.union( this.getMergeDependency( true ), abox.doExplanation() );
-			ds = ds.union( node.getMergeDependency( true ), abox.doExplanation() );
+			ds = TimeDS.union( ds, this.getMergeDependency( true ), abox.doExplanation() );
+			ds = TimeDS.union( ds, node.getMergeDependency( true ), abox.doExplanation() );
 			abox.setClash( Clash.nominal( this, ds, node.getName() ));
 
 			if (!ds.isIndependent()) {
@@ -822,10 +780,11 @@ public abstract class Node {
 		return true;
 	}
 	
-	public void inheritDifferents( Node y, DependencySet ds ) {
-		for( Map.Entry<Node,DependencySet> entry : y.differents.entrySet() ) {
+	public void inheritDifferents( Node y, TimeDS mergeDS ) {
+    	assert mergeDS.size() == 1;
+		for( Map.Entry<Node,TimeDS> entry : y.differents.entrySet() ) {
 			Node yDiff = entry.getKey();
-			DependencySet finalDS = ds.union( entry.getValue(), abox.doExplanation() );
+			TimeDS finalDS = entry.getValue().union(mergeDS.ds(), abox.doExplanation());
 			
 			setDifferent( yDiff, finalDS );
 		}

@@ -9,13 +9,8 @@ package org.mindswap.pellet.tableau.completion.rule;
 import java.util.List;
 import java.util.logging.Level;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -39,7 +34,7 @@ import aterm.ATermInt;
  */
 public class MinRule extends AbstractTableauRule {
 	public MinRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.MIN_NUMBER, BlockingType.COMPLETE );
+		super( strategy, BlockingType.COMPLETE );
 	}
 
     public void apply( Individual x ) {
@@ -69,33 +64,38 @@ public class MinRule extends AbstractTableauRule {
         int n = ((ATermInt) mc.getArgument( 1 )).getInt();
         ATermAppl c = (ATermAppl) mc.getArgument( 2 );
 
+
+        TimeDS timeDS = x.getDepends( mc );
+        
+        if(timeDS.isEmpty())
+            throw new RuntimeException("strange");
+
+
         // FIXME make sure all neighbors are safe
-        if( x.hasDistinctRNeighborsForMin( r, n, c ) )
+        if( x.hasDistinctRNeighborsForMin( r, n, c, false ) )
             return;
 
-        DependencySet ds = x.getDepends( mc );
-        
-        if(!PelletOptions.MAINTAIN_COMPLETION_QUEUE && ds == null)
-			return;
+        TimeDS ds = x.getDepends( mc );
 
+        if(ds.isEmpty())
+            throw new RuntimeException("strange");
 
-        if( log.isLoggable( Level.FINE ) )
-            log.fine( "MIN : " + x + " -> " + r + " -> anon"
+            log.info( "MIN   " + x + " -> " + r + " -> anon"
                 + (n == 1 ? "" : (strategy.getABox().getAnonCount() + 1) + " - anon") + (strategy.getABox().getAnonCount() + n) + " "
-                + ATermUtils.toString( c ) + " " + ds );
+                + ATermUtils.toString( c ) + " " +" ON " + timeDS );
 
         Node[] y = new Node[n];
         for( int c1 = 0; c1 < n; c1++ ) {
         	strategy.checkTimer();
             if( r.isDatatypeRole() )
-                y[c1] = strategy.getABox().addLiteral( ds );
+                y[c1] = strategy.getABox().addLiteral( timeDS );
             else {
-                y[c1] = strategy.createFreshIndividual( x, ds );
+                y[c1] = strategy.createFreshIndividual( x, timeDS );
             }
             Node succ = y[c1];
-            DependencySet finalDS = ds;
+            TimeDS finalDS = timeDS;
 
-            strategy.addEdge( x, r, succ, ds );
+            strategy.addEdge( x, r, succ, timeDS );
             if( succ.isPruned() ) {
                 finalDS = finalDS.union( succ.getMergeDependency( true ), strategy.getABox().doExplanation() );
                 succ = succ.getMergedTo();

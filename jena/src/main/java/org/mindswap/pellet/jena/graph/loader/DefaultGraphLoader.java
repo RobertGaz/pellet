@@ -74,21 +74,6 @@ import aterm.ATerm;
 import aterm.ATermAppl;
 import aterm.ATermList;
 
-import com.clarkparsia.pellet.rules.model.AtomDConstant;
-import com.clarkparsia.pellet.rules.model.AtomDObject;
-import com.clarkparsia.pellet.rules.model.AtomDVariable;
-import com.clarkparsia.pellet.rules.model.AtomIConstant;
-import com.clarkparsia.pellet.rules.model.AtomIObject;
-import com.clarkparsia.pellet.rules.model.AtomIVariable;
-import com.clarkparsia.pellet.rules.model.BuiltInAtom;
-import com.clarkparsia.pellet.rules.model.ClassAtom;
-import com.clarkparsia.pellet.rules.model.DataRangeAtom;
-import com.clarkparsia.pellet.rules.model.DatavaluedPropertyAtom;
-import com.clarkparsia.pellet.rules.model.DifferentIndividualsAtom;
-import com.clarkparsia.pellet.rules.model.IndividualPropertyAtom;
-import com.clarkparsia.pellet.rules.model.Rule;
-import com.clarkparsia.pellet.rules.model.RuleAtom;
-import com.clarkparsia.pellet.rules.model.SameIndividualAtom;
 import com.clarkparsia.pellet.vocabulary.BuiltinNamespace;
 import com.hp.hpl.jena.graph.Factory;
 import com.hp.hpl.jena.graph.Graph;
@@ -709,278 +694,7 @@ public class DefaultGraphLoader implements GraphLoader {
 		}
 	}
 	
-	private void defineRule(Node node) {
-		List<RuleAtom> head = parseAtomList( getObject( node, SWRL.head.asNode() ) );
-		List<RuleAtom> body = parseAtomList( getObject( node, SWRL.body.asNode() ) );
 
-		if( head == null || body == null ) {
-			String whichPart = "head and body";
-			if( head != null ) {
-	            whichPart = "body";
-            }
-            else if( body != null ) {
-	            whichPart = "head";
-            }
-			addUnsupportedFeature( "Ignoring SWRL rule (unsupported " + whichPart + "): " + node );
-
-			return;
-		}
-
-		ATermAppl name = JenaUtils.makeATerm( node );
-		Rule rule = new Rule( name, head, body );
-		kb.addRule( rule );
-	}
-
-	private AtomDObject createRuleDObject(Node node) {
-
-		if( !node.isLiteral() ) {
-			ATermAppl name = node2term( node );
-			if( !ATermUtils.isPrimitive( name ) ) {
-				addUnsupportedFeature( "Cannot create rule data variable out of " + node );
-				return null;
-			}
-			return new AtomDVariable( name.toString() );
-		}
-		else {
-			return new AtomDConstant( node2term( node ) );
-		}
-	}
-
-	private AtomIObject createRuleIObject(Node node) {
-		if( hasObject( node, RDF.type.asNode(), SWRL.Variable.asNode() ) ) {
-			return new AtomIVariable( node.getURI() );
-		}
-		else {
-			ATermAppl term = node2term( node );
-			if( defineIndividual( term ) ) {
-	            return new AtomIConstant( node2term( node ) );
-            }
-            else {
-				addUnsupportedFeature( "Cannot create rule individual object for node " + node );
-				return null;
-			}
-		}
-	}
-
-	private List<RuleAtom> parseAtomList(Node atomList) {
-		Node obj = null;
-		List<RuleAtom> atoms = new ArrayList<RuleAtom>();
-
-		while( atomList != null && !atomList.equals( RDF.nil.asNode() ) ) {
-			String atomType = "unsupported atom";
-			Node atomNode = getObject( atomList, RDF.first.asNode() );
-
-			RuleAtom atom = null;
-			if( hasObject( atomNode, RDF.type.asNode(), SWRL.ClassAtom.asNode() ) ) {
-				ATermAppl description = null;
-				AtomIObject argument = null;
-				atomType = "ClassAtom";
-
-				if( (obj = getObject( atomNode, SWRL.classPredicate.asNode() )) != null ) {
-	                description = node2term( obj );
-                }
-
-				if( (obj = getObject( atomNode, SWRL.argument1.asNode() )) != null ) {
-	                argument = createRuleIObject( obj );
-                }
-
-				if( description == null ) {
-	                addUnsupportedFeature( "Error on " + SWRL.classPredicate );
-                }
-                else if( argument == null ) {
-	                addUnsupportedFeature( "Error on" + SWRL.argument1 );
-                }
-                else {
-	                atom = new ClassAtom( description, argument );
-                }
-			}
-			else if( hasObject( atomNode, RDF.type.asNode(), SWRL.IndividualPropertyAtom.asNode() ) ) {
-				ATermAppl pred = null;
-				AtomIObject argument1 = null;
-				AtomIObject argument2 = null;
-				atomType = "IndividualPropertyAtom";
-
-				if( (obj = getObject( atomNode, SWRL.propertyPredicate.asNode() )) != null ) {
-	                pred = node2term( obj );
-                }
-
-				if( (obj = getObject( atomNode, SWRL.argument1.asNode() )) != null ) {
-	                argument1 = createRuleIObject( obj );
-                }
-
-				if( (obj = getObject( atomNode, SWRL.argument2.asNode() )) != null ) {
-	                argument2 = createRuleIObject( obj );
-                }
-
-				if( pred == null || !defineObjectProperty( pred ) ) {
-	                addUnsupportedFeature( "Cannot define datatype property " + pred );
-                }
-                else if( argument1 == null ) {
-	                addUnsupportedFeature( "Term not found: " + SWRL.argument1 );
-                }
-                else if( argument2 == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.argument2 );
-                }
-                else {
-	                atom = new IndividualPropertyAtom( pred, argument1, argument2 );
-                }
-			}
-			else if( hasObject( atomNode, RDF.type.asNode(), SWRL.DifferentIndividualsAtom.asNode() ) ) {
-				AtomIObject argument1 = null;
-				AtomIObject argument2 = null;
-				atomType = "DifferentIndividualsAtom";
-
-				if( (obj = getObject( atomNode, SWRL.argument1.asNode() )) != null ) {
-	                argument1 = createRuleIObject( obj );
-                }
-
-				if( (obj = getObject( atomNode, SWRL.argument2.asNode() )) != null ) {
-	                argument2 = createRuleIObject( obj );
-                }
-
-				if( argument1 == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.argument1 );
-                }
-                else if( argument2 == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.argument2 );
-                }
-                else {
-	                atom = new DifferentIndividualsAtom( argument1, argument2 );
-                }
-			}
-			else if( hasObject( atomNode, RDF.type.asNode(), SWRL.SameIndividualAtom.asNode() ) ) {
-				AtomIObject argument1 = null;
-				AtomIObject argument2 = null;
-				atomType = "SameIndividualAtom";
-
-				if( (obj = getObject( atomNode, SWRL.argument1.asNode() )) != null ) {
-	                argument1 = createRuleIObject( obj );
-                }
-
-				if( (obj = getObject( atomNode, SWRL.argument2.asNode() )) != null ) {
-	                argument2 = createRuleIObject( obj );
-                }
-
-				if( argument1 == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.argument1 );
-                }
-                else if( argument2 == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.argument2 );
-                }
-                else {
-	                atom = new SameIndividualAtom( argument1, argument2 );
-                }
-			}
-			else if( hasObject( atomNode, RDF.type.asNode(), SWRL.DatavaluedPropertyAtom.asNode() ) ) {
-				ATermAppl pred = null;
-				AtomIObject argument1 = null;
-				AtomDObject argument2 = null;
-				atomType = "DatavaluedPropertyAtom";
-
-				if( (obj = getObject( atomNode, SWRL.propertyPredicate.asNode() )) != null ) {
-	                pred = node2term( obj );
-                }
-
-				if( (obj = getObject( atomNode, SWRL.argument1.asNode() )) != null ) {
-	                argument1 = createRuleIObject( obj );
-                }
-
-				if( (obj = getObject( atomNode, SWRL.argument2.asNode() )) != null ) {
-	                argument2 = createRuleDObject( obj );
-                }
-
-				if( pred == null || !defineDatatypeProperty( pred ) ) {
-	                addUnsupportedFeature( "Cannot define datatype property " + pred );
-                }
-                else if( argument1 == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.argument1 );
-                }
-                else if( argument2 == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.argument2 );
-                }
-                else {
-	                atom = new DatavaluedPropertyAtom( pred, argument1, argument2 );
-                }
-			}
-			else if( hasObject( atomNode, RDF.type.asNode(), SWRL.BuiltinAtom.asNode() ) ) {
-				atomType = "BuiltinAtom";
-				Node builtInNode = null;
-				List<AtomDObject> arguments = null;
-
-				if( (obj = getObject( atomNode, SWRL.arguments.asNode() )) != null ) {
-	                arguments = parseArgumentList( obj );
-                }
-
-				builtInNode = getObject( atomNode, SWRL.builtin.asNode() );
-
-				if( arguments == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.arguments );
-                }
-                else if( builtInNode != null && builtInNode.isURI() ) {
-	                atom = new BuiltInAtom( builtInNode.getURI(), arguments );
-                }
-			}
-			else if( hasObject( atomNode, RDF.type.asNode(), SWRL.DataRangeAtom.asNode() ) ) {
-				atomType = "DataRangeAtom";
-				ATermAppl datatype = null;
-				AtomDObject argument = null;
-
-				if( (obj = getObject( atomNode, SWRL.dataRange.asNode() )) != null ) {
-	                datatype = node2term( obj );
-                }
-
-				if( (obj = getObject( atomNode, SWRL.argument1.asNode() )) != null ) {
-	                argument = createRuleDObject( obj );
-                }
-
-				if( datatype == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.dataRange );
-                }
-                else if( argument == null ) {
-	                addUnsupportedFeature( "Term not found " + SWRL.argument1 );
-                }
-                else {
-	                atom = new DataRangeAtom( datatype, argument );
-                }
-			}
-
-			if( atom == null ) {
-				addUnsupportedFeature( "Ignoring SWRL " + atomType + ": " + atomNode );
-				return null;
-			}
-
-			atoms.add( atom );
-
-			atomList = getObject( atomList, RDF.rest.asNode() );
-
-		}
-
-		if( atomList == null ) {
-			addUnsupportedFeature( "Not nil-terminated list in atom list! (Seen " + atoms + " )" );
-			return null;
-		}
-
-		return atoms;
-	}
-
-	private List<AtomDObject> parseArgumentList(Node argumentList) {
-		List<AtomDObject> arguments = new ArrayList<AtomDObject>();
-
-		while( argumentList != null && !argumentList.equals( RDF.nil.asNode() ) ) {
-			Node argumentNode = getObject( argumentList, RDF.first.asNode() );
-
-			if( argumentNode == null ) {
-	            addUnsupportedFeature( "Term in list not found " + RDF.first );
-            }
-            else {
-				arguments.add( createRuleDObject( argumentNode ) );
-
-				argumentList = getObject( argumentList, RDF.rest.asNode() );
-			}
-		}
-
-		return arguments;
-	}
 
 	private boolean addNegatedAssertion(Node stmt) {
 		Node s = getObject( stmt, OWL2.sourceIndividual.asNode() );
@@ -1397,12 +1111,6 @@ public class DefaultGraphLoader implements GraphLoader {
 
 		case OWL2_NegativePropertyAssertion:
 			addNegatedAssertion( s );
-			break;
-
-		case SWRL_Imp:
-			if( PelletOptions.DL_SAFE_RULES ) {
-	            defineRule( s );
-            }
 			break;
 
 		case OWL_AllDifferent:
@@ -1953,24 +1661,24 @@ public class DefaultGraphLoader implements GraphLoader {
 			kb.addEquivalentClass( st, disjunction );
 			break;
 
-		case OWL2_hasKey:
-			if( o.equals( RDF.nil.asNode() ) ) {
-	            return;
-            }
-
-			Set<ATermAppl> properties = new HashSet<ATermAppl>();
-			// assert the subject is a class
-			defineClass( st );
-			list = createList( o );
-
-			for( ATermList l = list; !l.isEmpty(); l = l.getNext() ) {
-				ATermAppl f = (ATermAppl) l.getFirst();
-				defineProperty( f );
-				properties.add( f );
-			}
-
-			kb.addKey( st, properties );
-			break;
+//		case OWL2_hasKey:
+//			if( o.equals( RDF.nil.asNode() ) ) {
+//	            return;
+//            }
+//
+//			Set<ATermAppl> properties = new HashSet<ATermAppl>();
+//			// assert the subject is a class
+//			defineClass( st );
+//			list = createList( o );
+//
+//			for( ATermList l = list; !l.isEmpty(); l = l.getNext() ) {
+//				ATermAppl f = (ATermAppl) l.getFirst();
+//				defineProperty( f );
+//				properties.add( f );
+//			}
+//
+//			kb.addKey( st, properties );
+//			break;
 
 		case OWL2_topDataProperty:
 		case OWL2_bottomDataProperty:

@@ -6,9 +6,7 @@
 
 package org.mindswap.pellet.tableau.cache;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 
 import aterm.ATermAppl;
 
@@ -28,8 +26,8 @@ public class CachedOutEdge extends CachedEdge {
 		super( edge.getRole(), edge.getToName(), edge.getDepends() );
 	}
 
-	public CachedOutEdge(Role role, ATermAppl to, DependencySet ds) {
-		super( role, to, ds );
+	public CachedOutEdge(Role role, ATermAppl to, TimeDS ds) {
+		super( role, to, ds.copy() );
 	}
 	
 	/**

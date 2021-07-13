@@ -30,12 +30,10 @@
 
 package org.mindswap.pellet;
 
-import java.util.HashSet;
 import java.util.Set;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.mindswap.pellet.tableau.completion.incremental.DependencyIndex;
 import org.mindswap.pellet.utils.SetUtils;
 import org.mindswap.pellet.utils.intset.IntSet;
 import org.mindswap.pellet.utils.intset.IntSetFactory;
@@ -89,7 +87,7 @@ public class DependencySet {
 	 */
 	private int							branch		= NO_BRANCH;
 
-	private Set<ATermAppl>				explain;
+	Set<ATermAppl>				explain;
 
 	/**
 	 * Create an empty set
@@ -266,26 +264,12 @@ public class DependencySet {
 		sb.append( branch );
 		sb.append( "-" );
 		sb.append( depends );
-		if( log.isLoggable( Level.FINE ) ) {
+		if( log.isLoggable( Level.FINE) && !explain.isEmpty() ) {
 			sb.append( " " );
 			sb.append( explain );
 		}
 		sb.append( "]" );
 		return sb.toString();
-	}
-
-	/**
-	 * Remove explanation sets which contain references to a syntactic assertion
-	 * 
-	 * @param assertion
-	 */
-	public void removeExplain(ATermAppl assertion) {
-		if( getExplain().contains( assertion ) ) {
-			setExplain( new HashSet<ATermAppl>() );
-			if( DependencyIndex.log.isLoggable( Level.FINE ) )
-				DependencyIndex.log.fine( "             Explain: removed " );
-		}
-
 	}
 
 	public void setDepends(IntSet depends) {
@@ -294,6 +278,10 @@ public class DependencySet {
 
 	public IntSet getDepends() {
 		return depends;
+	}
+
+	public void setBranch(int branch) {
+		this.branch = branch;
 	}
 
 	/**
@@ -333,5 +321,10 @@ public class DependencySet {
     	else {
     		return DependencySet.DUMMY;
     	}
+	}
+
+
+	public DependencySet copy() {
+		return new DependencySet( branch, depends.copy(), explain);
 	}
 }

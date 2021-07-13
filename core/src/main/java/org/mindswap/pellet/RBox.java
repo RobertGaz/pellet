@@ -524,7 +524,6 @@ public class RBox {
 	}
 
 	public void prepare() {
-
 		// first pass - compute sub roles
 		Set<Role> complexRoles = new HashSet<Role>();
 		for (Role role : roles.values()) {
@@ -671,9 +670,8 @@ public class RBox {
 				reflexiveRoles.add(r);
 			}
 
-			if (log.isLoggable(Level.FINE)) {
-				log.fine(r.debugString());
-			}
+			log.finer(r.debugString());
+
 		}
 
 		// we will compute the taxonomy when we need it

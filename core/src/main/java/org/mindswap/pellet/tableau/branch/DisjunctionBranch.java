@@ -30,19 +30,11 @@
 
 package org.mindswap.pellet.tableau.branch;
 
+import java.util.Arrays;
 import java.util.logging.Level;
 
 
-import java.util.HashSet;
-import java.util.Set;
-
-import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.Clash;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
-import org.mindswap.pellet.exceptions.InternalReasonerException;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
 import org.mindswap.pellet.utils.ATermUtils;
 
@@ -53,28 +45,33 @@ public class DisjunctionBranch extends Branch {
 	protected Node node;
 	protected ATermAppl disjunction;
 	private ATermAppl[] disj;
-	protected DependencySet[] prevDS;
+	protected TimeDS[] prevDS;
 	protected int[] order;
+
+	protected Time[] tryNextTime;
 	
-	public DisjunctionBranch(ABox abox, CompletionStrategy completion, Node node, ATermAppl disjunction, DependencySet ds, ATermAppl[] disj) {
-		super(abox, completion, ds, disj.length);
+	public DisjunctionBranch(ABox abox, CompletionStrategy completion, Node node, ATermAppl disjunction, TimeDS timeDS, ATermAppl[] disj) {
+		super(abox, completion, timeDS, disj.length);
 		
 		this.node = node;
 		this.disjunction = disjunction;
 		this.setDisj( disj );
-        this.prevDS = new DependencySet[disj.length];
+        this.prevDS = new TimeDS[disj.length];
 		this.order = new int[disj.length];
         for(int i = 0; i < disj.length; i++)
             order[i] = i;
+
+		tryNextTime = new Time[getTryCount()];
+		tryNextTime[0] = timeDS.time();
 	}
 	
 	public Node getNode() {
 		return node;
 	}
-    
+
     protected String getDebugMsg() {
-        return "DISJ: Branch (" + getBranch() + ") try (" + (getTryNext() + 1) + "/" + getTryCount()
-            + ") " + node + " " +  ATermUtils.toString( disj[getTryNext()] ) + " " + ATermUtils.toString(disjunction);
+        return "DISJ  Branch(" + getBranch() + "), try(" + (getTryNext() + 1) + "/" + getTryCount()
+            + "). " + node + ":" + ATermUtils.toString(disjunction) + (!PelletOptions.SPECIAL_LOGS ? " ON " + getTryNextTime() : "");
     }
 	
 	public DisjunctionBranch copyTo(ABox abox) {
@@ -84,9 +81,9 @@ public class DisjunctionBranch extends Branch {
 	    b.setNodeCount( nodeCount );
 	    b.setBranch( branch );
 	    b.setStrategy( strategy );
-        b.setTryNext( tryNext );
+        b.tryNextTime = this.tryNextTime;
 
-        b.prevDS = new DependencySet[disj.length];
+        b.prevDS = new TimeDS[disj.length];
         System.arraycopy(prevDS, 0, b.prevDS, 0, disj.length );
         b.order = new int[disj.length];
         System.arraycopy(order, 0, b.order, 0, disj.length );
@@ -122,219 +119,121 @@ public class DisjunctionBranch extends Branch {
         
         return -1;
 	}
-	
-    public void setLastClash( DependencySet ds ) {
-    		super.setLastClash( ds );
-    		if(getTryNext()>=0)
-    			prevDS[getTryNext()] = ds;
-    }
-    
+
+	public void 	setLastClash( TimeDS clashDS ) {
+		super.setLastClash(clashDS);
+		tryNextTime[getTryNext()].subtract(clashDS.time());
+		if (getTryNext() + 1 != getTryCount()) {
+			tryNextTime[getTryNext() + 1] = clashDS.time();
+		}
+		prevDS[getTryNext()] = clashDS.copy();
+	}
+
 	protected void tryBranch() {			
 		abox.incrementBranch();
-		
+
 		int[] stats = null;
-		if( PelletOptions.USE_DISJUNCT_SORTING ) {
-		    stats = abox.getDisjBranchStats().get(disjunction);    
-		    if(stats == null) {
-		        int preference = preferredDisjunct();
-		        stats = new int[disj.length];
-		        for(int i = 0; i < disj.length; i++) {
-		            stats[i] = (i != preference) ? 0 : Integer.MIN_VALUE;
-		        }
-		        abox.getDisjBranchStats().put(disjunction, stats); 
-		    }
-		    if(getTryNext() > 0) {
-		        stats[order[getTryNext()-1]]++;
-			}
-			if(stats != null) {
-			    int minIndex = getTryNext();
-			    int minValue = stats[getTryNext()];
-		        for(int i = getTryNext() + 1; i < stats.length; i++) {
-		            boolean tryEarlier = ( stats[i] < minValue );		                
-		            
-		            if( tryEarlier ) {
-		                minIndex = i;
-		                minValue = stats[i];
-		            }
-		        }
-		        if(minIndex != getTryNext()) {
-		            ATermAppl selDisj = disj[minIndex];
-		            disj[minIndex] = disj[getTryNext()];
-		            disj[getTryNext()] = selDisj;
-		            order[minIndex] = getTryNext();
-		            order[getTryNext()] = minIndex;	            
-		        }
-			}
-		}
 		
 		Node node = this.node.getSame();
 
 		for(; getTryNext() < getTryCount(); tryNext++) {
 			ATermAppl d = disj[getTryNext()];
+			Time time = getTryNextTime();
+			if (time == null || time.isEmpty()) {
+				break;
+			}
 
 			if(PelletOptions.USE_SEMANTIC_BRANCHING) {
 				for(int m = 0; m < getTryNext(); m++)
-					strategy.addType(node, ATermUtils.negate( disj[m] ), prevDS[m]);
+					strategy.addType(node, ATermUtils.negate(disj[m]), prevDS[m].partBy(time));
 			}
 
-			DependencySet ds = null;
-			if(getTryNext() == getTryCount() - 1 && !PelletOptions.SATURATE_TABLEAU) {
-				ds = getTermDepends();
+			TimeDS timeDS = null;
+			if (getTryNext() == getTryCount() - 1 && !PelletOptions.SATURATE_TABLEAU) {
+				timeDS = getTermDepends();
 				for(int m = 0; m < getTryNext(); m++)
-					ds = ds.union(prevDS[m], abox.doExplanation());
-
-				//CHW - added for incremental reasoning and rollback through deletions
-				if(PelletOptions.USE_INCREMENTAL_DELETION)
-					ds.setExplain( getTermDepends().getExplain() );
-				else
-					ds.remove(getBranch());
+//					ROBERT тут не intersection?
+					timeDS = TimeDS.union(timeDS, prevDS[m], abox.doExplanation());
+				timeDS = timeDS.partBy(time);
+				timeDS.remove(branch);
+			} else {
+				timeDS = new TimeDS(time, new DependencySet(branch));
 			}
-			else {
-				//CHW - Changed for tracing purposes
-				if(PelletOptions.USE_INCREMENTAL_DELETION)
-					ds = getTermDepends().union(new DependencySet(getBranch()), abox.doExplanation());
-				else{
-					ds = new DependencySet(getBranch());
-					//added for tracing
-					Set<ATermAppl> explain = new HashSet<ATermAppl>();
-					explain.addAll(getTermDepends().getExplain());
-					ds.setExplain( explain );											
-				}
-            }
-            
-			if( log.isLoggable( Level.FINE ) ) 
-                log.fine( getDebugMsg() );		
-			
+
+			log.info(getDebugMsg() );
+
 			ATermAppl notD = ATermUtils.negate(d);
-			DependencySet clashDepends = PelletOptions.SATURATE_TABLEAU ? null : node.getDepends(notD);
-			if(clashDepends == null) {
-			    strategy.addType(node, d, ds);
+			TimeDS clashDS = PelletOptions.SATURATE_TABLEAU ?
+					TimeDS.empty():
+					TimeDS.clash(node.getDepends(notD), timeDS, abox.doExplanation());
+
+			if (node.toString().equals("Minnie")) {
+				System.out.println("SOUT");
+			}
+
+			if (clashDS.isEmpty()) {
+				strategy.addType(node, d, timeDS);
 				// we may still find a clash if concept is allValuesFrom
 				// and there are some conflicting edges
-				if(abox.isClosed()) 
-					clashDepends = abox.getClash().getDepends();
+				if(abox.isClosed())
+					clashDS = abox.getClash().getDepends();
 			}
-			else {
-			    clashDepends = clashDepends.union(ds, abox.doExplanation());
-			}
-			
-			// if there is a clash
-			if(clashDepends != null) {				
-				if( log.isLoggable( Level.FINE ) ) {
-					Clash clash = abox.isClosed() ? abox.getClash() : Clash.atomic(node, clashDepends, d);
-                    log.fine("CLASH: Branch " + getBranch() + " " + clash + "!" + " " + clashDepends.getExplain());
-				}
-				
-				if( PelletOptions.USE_DISJUNCT_SORTING ) {
-				    if(stats == null) {
-				        stats = new int[disj.length];
-				        for(int i = 0; i < disj.length; i++)
-				            stats[i] = 0;
-				        abox.getDisjBranchStats().put(disjunction, stats); 
-				    }
-					stats[order[getTryNext()]]++;
-				}
-				
-				// do not restore if we do not have any more branches to try. after
-				// backtrack the correct branch will restore it anyway. more
-				// importantly restore clears the clash info causing exceptions
-				if(getTryNext() < getTryCount() - 1 && clashDepends.contains(getBranch())) {
-				    // do not restore if we find the problem without adding the concepts 
-				    if(abox.isClosed()) {
-				    	if( node.isLiteral() ) {
-				    		abox.setClash( null );
-				    		
-				    		node.restore( branch );				    					    		
-				    	}
-				    	else {
-							// restoring a single node is not enough here because one of the disjuncts could be an 
-						    // all(r,C) that changed the r-neighbors
-					        strategy.restoreLocal((Individual) node, this);
-							
-							// global restore sets the branch number to previous value so we need to
-							// increment it again
-							abox.incrementBranch();
-				    	}
-				    }
-					
-                    setLastClash( clashDepends );
-				}
-				else {
-				    // set the clash only if we are returning from the function
-					if(abox.doExplanation()) {
-					    ATermAppl positive = (ATermUtils.isNot(notD) ? d : notD);
-					    abox.setClash(Clash.atomic(node, clashDepends.union(ds, abox.doExplanation()), positive));
-					}
-					else
-					    abox.setClash(Clash.atomic(node, clashDepends.union(ds, abox.doExplanation())));
 
-					//CHW - added for inc reasoning
-					if(PelletOptions.USE_INCREMENTAL_DELETION)
-						abox.getKB().getDependencyIndex().addCloseBranchDependency(this, abox.getClash().getDepends());
-
-			        return;
-				}
-			} 
-			else 
+			if(clashDS.isEmpty()) {
 				return;
-		}
-		
-		// this code is not unreachable. if there are no branches left restore does not call this 
-		// function, and the loop immediately returns when there are no branches left in this
-		// disjunction. If this exception is thrown it shows a bug in the code.
-		throw new InternalReasonerException("This exception should not be thrown!");
-	}
-	
-	
-	/**
-	 * Added for to re-open closed branches.
-	 * This is needed for incremental reasoning through deletions
-	 * 
-	 * @param index The shift index
-	 */
-	public void shiftTryNext(int openIndex){
-		//save vals
-//		int ord = order[openIndex];
-		ATermAppl dis = disj[openIndex];
-//		DependencySet preDS = prevDS[openIndex];
+			}
 
-		//TODO: also need to handle semantic branching	
-		if(PelletOptions.USE_SEMANTIC_BRANCHING){
-//			if(this.ind.getDepends(ATermUtils.makeNot(dis)) != null){
-//				//check if the depedency is the same as preDS - if so, then we know that we added it
-//			}
-		}
-		
-		//need to shift both prevDS and next and order
-		//disjfirst
-		for(int i = openIndex; i < disj.length-1; i++){
-			disj[i] = disj[i+1];
-			prevDS[i] = prevDS[i+1];
-			order[i] = order[i];
-		}
+			// if there is a clash
+			if( log.isLoggable( Level.INFO ) ) {
+				Clash clash = abox.isClosed() ? abox.getClash() : Clash.atomic(node, clashDS, d);
+				log.info("CLASH Branch " + getBranch() + " " + clash + "!" + " " + clashDS.getExplain());
+			}
 
-		//move open label to end
-		disj[disj.length-1] = dis;
-		prevDS[disj.length-1] = null;
-		order[disj.length-1] = disj.length-1;
-		
-		//decrement trynext
-		setTryNext( getTryNext() - 1 );		
-	}
-	
-	
-	/**
-	 * 
-	 */
-	public void printLong(){
-		for(int i = 0; i < disj.length; i++){
-			System.out.println("Disj[" + i + "] " + disj[i]);
-			System.out.println("prevDS[" + i + "] " + prevDS[i]);
-			System.out.println("order[" + i + "] " + order[i]);
-		}
+			if (!Time.subtraction(clashDS.time(), time).isEmpty()) {
+				throw new RuntimeException("check need check TIME");
+			}
 
-		//decrement trynext
-		System.out.println("trynext: " + getTryNext());
+			// do not restore if we do not have any more branches to try. after
+			// backtrack the correct branch will restore it anyway. more
+			// importantly restore clears the clash info causing exceptions
+			if (getTryNext() < getTryCount() - 1 && clashDS.contains(branch)) {
+				// do not restore if we find the problem without adding the concepts
+				if(abox.isClosed()) {
+					if( node.isLiteral() ) {
+						abox.setClash( null );
+						node.restore( branch, clashDS.time() );
+					} else {
+						// restoring a single node is not enough here because one of the disjuncts could be an
+						// all(r,C) that changed the r-neighbors
+						strategy.restoreLocal((Individual) node, this, clashDS.time());
+
+						// global restore sets the branch number to previous value so we need to
+						// increment it again
+						abox.incrementBranch();
+					}
+				}
+				setLastClash( clashDS );
+
+			} else {
+
+				// set the clash only if we are returning from the function
+				if(abox.doExplanation()) {
+					ATermAppl positive = (ATermUtils.isNot(notD) ? d : notD);
+					abox.setClash(Clash.atomic(node, clashDS, positive));
+				} else {
+					abox.setClash(Clash.atomic(node, clashDS));
+				}
+
+				tryNextTime[getTryNext()].subtract(clashDS.time());
+
+//				if (isUselessBranch() && branch > 1) {
+//					log.info("I am useless Branch DISJ (" +branch+") -> deleting branches "+branch + "..." + abox.getBranches().size() +"  from ABox.");
+//					abox.getBranches().subList(branch-1, abox.getBranches().size()).clear();
+//				}
+
+				return;
+			}
+		}
 	}
 
 	/**
@@ -350,5 +249,24 @@ public class DisjunctionBranch extends Branch {
 	public ATermAppl getDisjunct(int i) {
 		return disj[i];
 	}
+
+
+	public Time getTryNextTime() {
+		return tryNextTime[getTryNext()];
+	}
+
+	public boolean isUselessBranch() {
+		return Arrays.stream(tryNextTime).allMatch(t -> t.isEmpty());
+	}
+
+	public boolean currentlyUseless() {
+		for (int i = 0; i < getTryNext(); ++i) {
+			if (!tryNextTime[i].isEmpty()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 
 }

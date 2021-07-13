@@ -9,12 +9,7 @@ package org.mindswap.pellet.tableau.completion.rule;
 import java.util.Iterator;
 import java.util.List;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.EdgeList;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
 import org.mindswap.pellet.utils.ATermUtils;
 
@@ -43,32 +38,33 @@ public class SimpleAllValuesRule extends AllValuesRule {
 	
 
     @Override
-	public void applyAllValues(Individual x, ATermAppl av, DependencySet ds) {
+	public void applyAllValues(Individual x, ATermAppl av, TimeDS timeDS) {
     	ATermAppl p = (ATermAppl) av.getArgument( 0 );
 		ATermAppl c = (ATermAppl) av.getArgument( 1 );
 		
 		Role s = strategy.getABox().getRole( p );
 		
 		if ( s.isTop() && s.isObjectRole() ) {
-        	applyAllValuesTop( av, c, ds );
+        	applyAllValuesTop( av, c, timeDS );
         	return;
         }
-		
+
 		EdgeList edges = x.getRNeighborEdges( s );
 		for( int e = 0; e < edges.size(); e++ ) {
 			Edge edgeToY = edges.edgeAt( e );
 			Node y = edgeToY.getNeighbor( x );
-			DependencySet finalDS = ds.union( edgeToY.getDepends(), strategy.getABox().doExplanation() );
-			if( strategy.getABox().doExplanation() ) {
-				Role edgeRole = edgeToY.getRole();
-				DependencySet subDS = s.getExplainSubOrInv( edgeRole );
-				finalDS = finalDS.union( subDS.getExplain(), true );
-			}
-			
-			applyAllValues( x, s, y, c, finalDS );
+			TimeDS finalDS = TimeDS.intersection(timeDS, edgeToY.getDepends(), strategy.getABox().doExplanation());
+			if (!finalDS.isEmpty()) {
+				if (strategy.getABox().doExplanation()) {
+					Role edgeRole = edgeToY.getRole();
+					finalDS.addExplain(s.getExplainSubOrInv(edgeRole), true);
+				}
 
-			if( x.isMerged() )
-				return;
+				applyAllValues(x, s, y, c, finalDS);
+
+				if (x.isMerged())
+					return;
+			}
 		}
 
 		if( !s.isSimple() ) {
@@ -79,24 +75,24 @@ public class SimpleAllValuesRule extends AllValuesRule {
 				for( int e = 0; e < edges.size(); e++ ) {
 					Edge edgeToY = edges.edgeAt( e );
 					Node y = edgeToY.getNeighbor( x );
-					DependencySet finalDS = ds.union( edgeToY.getDepends(), strategy.getABox().doExplanation() );
-					if( strategy.getABox().doExplanation() ) {
-						finalDS = finalDS.union( r.getExplainTransitive().getExplain(), true );
-						finalDS = finalDS.union( s.getExplainSubOrInv( edgeToY.getRole() ), true );
-					}
-					
-					applyAllValues( x, r, y, allRC, finalDS );
+					TimeDS finalDS = TimeDS.intersection(timeDS, edgeToY.getDepends(), strategy.getABox().doExplanation());
+					if (!finalDS.isEmpty()) {
+						if (strategy.getABox().doExplanation()) {
+							finalDS.addExplain(r.getExplainTransitive(), true);
+							finalDS.addExplain(s.getExplainSubOrInv(edgeToY.getRole()), true);
+						}
+						applyAllValues(x, r, y, allRC, finalDS);
 
-					if( x.isMerged() )
-						return;
+						if (x.isMerged())
+							return;
+					}
 				}
 			}
 		}
 	}
 
     @Override
-	public void applyAllValues( Individual subj, Role pred, Node obj, DependencySet ds) {
-    	
+	public void applyAllValues( Individual subj, Role pred, Node obj, TimeDS edgeDS) {
 		List<ATermAppl> allValues = subj.getTypes( Node.ALL );
 		int size = allValues.size();
 		Iterator<ATermAppl> i = allValues.iterator();
@@ -108,24 +104,29 @@ public class SimpleAllValuesRule extends AllValuesRule {
 			Role s = strategy.getABox().getRole( p );
 			
 			if ( s.isTop() && s.isObjectRole() ) {
-            	applyAllValuesTop( av, c, ds );
+            	applyAllValuesTop( av, c, edgeDS );
             	continue;
             }
-			
+
+
 			if( pred.isSubRoleOf( s ) ) {
-				DependencySet finalDS = ds.union(  subj.getDepends( av ), strategy.getABox().doExplanation() );
-				if( strategy.getABox().doExplanation() )
-					finalDS = finalDS.union( s.getExplainSubOrInv( pred ).getExplain(), true );
-                
-				applyAllValues( subj, s, obj, c, finalDS );
+				TimeDS typeDS = subj.getDepends(av);
+				TimeDS finalDS = TimeDS.intersection(edgeDS, typeDS, strategy.getABox().doExplanation());
+				if (!finalDS.isEmpty()) {
+					if (strategy.getABox().doExplanation())
+						finalDS.addExplain(s.getExplainSubOrInv(pred), true);
+
+					applyAllValues(subj, s, obj, c, finalDS);
+				}
 
 				if( s.isTransitive() ) {
-					ATermAppl allRC = ATermUtils.makeAllValues( s.getName(), c );
-					finalDS = ds.union( subj.getDepends( av ), strategy.getABox().doExplanation() );
-					if( strategy.getABox().doExplanation() )
-						finalDS = finalDS.union(  s.getExplainTransitive().getExplain(), true );
-					
-					applyAllValues( subj, s, obj, allRC, finalDS );
+					ATermAppl allRC = ATermUtils.makeAllValues(s.getName(), c);
+					finalDS = TimeDS.intersection(typeDS, edgeDS, strategy.getABox().doExplanation());
+					if (!finalDS.isEmpty()) {
+						if (strategy.getABox().doExplanation())
+							finalDS.addExplain(s.getExplainTransitive(), true);
+						applyAllValues(subj, s, obj, allRC, finalDS);
+					}
 				}
 			}
 

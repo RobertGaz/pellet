@@ -15,10 +15,11 @@ import java.util.List;
 import org.mindswap.pellet.Individual;
 import org.mindswap.pellet.Node;
 import org.mindswap.pellet.PelletOptions;
+import org.mindswap.pellet.Time;
+import org.mindswap.pellet.TimeDS;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tableau.branch.DisjunctionBranch;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -42,7 +43,7 @@ import aterm.ATermList;
  */
 public class DisjunctionRule extends AbstractTableauRule {
 	public DisjunctionRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.DISJUNCTION, BlockingType.COMPLETE );
+		super( strategy, BlockingType.COMPLETE );
 	}
 
 	public void apply(Individual node) {
@@ -95,17 +96,23 @@ public class DisjunctionRule extends AbstractTableauRule {
 		ATermList disjuncts = (ATermList) a.getArgument( 0 );
 		ATermAppl[] disj = new ATermAppl[disjuncts.getLength()];
 
+		Time knownDisjunctTime = Time.empty();
 		for( int index = 0; !disjuncts.isEmpty(); disjuncts = disjuncts.getNext(), index++ ) {
 			disj[index] = ATermUtils.negate( (ATermAppl) disjuncts.getFirst() );
-			if( node.hasType( disj[index] ) )
-				return;
+			TimeDS timeDS = node.getDepends(disj[index]);
+			if (timeDS != null) {
+				knownDisjunctTime.unite(timeDS.time());
+			}
 		}
 
-		DisjunctionBranch newBranch = new DisjunctionBranch( strategy.getABox(), strategy, node,
-				disjunction, node.getDepends( disjunction ), disj );
-		strategy.addBranch( newBranch );
+		Time leftForDisjunction = Time.subtraction(node.getDepends(disjunction).time(), knownDisjunctTime);
+		if (!leftForDisjunction.isEmpty()) {
+			DisjunctionBranch newBranch = new DisjunctionBranch(strategy.getABox(), strategy, node,
+					disjunction, node.getDepends(disjunction).partBy(leftForDisjunction), disj);
+			strategy.addBranch(newBranch);
 
-		newBranch.tryNext();
+			newBranch.tryNext();
+		}
 	}
 
 }

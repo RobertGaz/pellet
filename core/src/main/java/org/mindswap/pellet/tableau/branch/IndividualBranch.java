@@ -30,17 +30,21 @@
 
 package org.mindswap.pellet.tableau.branch;
 
-import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
+import aterm.ATermAppl;
+import org.mindswap.pellet.*;
+import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
+
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+import java.util.logging.Level;
 
 
 public abstract class IndividualBranch extends Branch {
 	protected Individual ind;
 	
-	protected IndividualBranch(ABox abox, CompletionStrategy strategy, Individual x, DependencySet ds, int n) {
+	protected IndividualBranch(ABox abox, CompletionStrategy strategy, Individual x, TimeDS ds, int n) {
 		super(abox, strategy, ds, n);
 		
 		ind = x;

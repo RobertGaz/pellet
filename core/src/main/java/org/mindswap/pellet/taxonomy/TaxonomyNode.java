@@ -30,6 +30,9 @@
 
 package org.mindswap.pellet.taxonomy;
 
+import aterm.ATermAppl;
+import org.mindswap.pellet.Time;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,6 +47,8 @@ import java.util.Set;
 public class TaxonomyNode<T> {
 
 	private Map<Object, Object>		dataMap	= new HashMap<Object, Object>();
+
+	private Map<ATermAppl, Time> 		timeMap = new HashMap<ATermAppl, Time>();
 
 	private Set<T>					equivalents;
 
@@ -192,6 +197,15 @@ public class TaxonomyNode<T> {
 		for( TaxonomyNode<T> sub : subs ) {
 			sub.print( indent );
 		}
+	}
+
+
+	public void putTime(ATermAppl instance, Time time) {
+		timeMap.put(instance, time);
+	}
+
+	public Time getTime(ATermAppl instance) {
+		return timeMap.get(instance);
 	}
 
 	public Object putDatum(Object key, Object value) {

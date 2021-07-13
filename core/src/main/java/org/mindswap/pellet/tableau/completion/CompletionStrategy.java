@@ -9,7 +9,6 @@ package org.mindswap.pellet.tableau.completion;
 import static com.clarkparsia.pellet.utils.TermFactory.TOP_OBJECT_PROPERTY;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -18,25 +17,12 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.Clash;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.EdgeList;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.IndividualIterator;
-import org.mindswap.pellet.Literal;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.NodeMerge;
-import org.mindswap.pellet.PelletOptions;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tableau.blocking.Blocking;
 import org.mindswap.pellet.tableau.blocking.BlockingFactory;
 import org.mindswap.pellet.tableau.branch.Branch;
 import org.mindswap.pellet.tableau.branch.GuessBranch;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
-import org.mindswap.pellet.tableau.completion.queue.QueueElement;
 import org.mindswap.pellet.tableau.completion.rule.AllValuesRule;
 import org.mindswap.pellet.tableau.completion.rule.ChooseRule;
 import org.mindswap.pellet.tableau.completion.rule.DataCardinalityRule;
@@ -61,10 +47,6 @@ import aterm.ATermAppl;
 import aterm.ATermList;
 
 import com.clarkparsia.pellet.expressivity.Expressivity;
-import com.clarkparsia.pellet.rules.model.DifferentIndividualsAtom;
-import com.clarkparsia.pellet.rules.model.Rule;
-import com.clarkparsia.pellet.rules.model.RuleAtom;
-import com.clarkparsia.pellet.rules.model.SameIndividualAtom;
 
 /**
  * A completion strategy specifies how the tableau rules will be applied to an ABox. Depending on the expressivity of
@@ -180,7 +162,7 @@ public abstract class CompletionStrategy {
 
 		tableauRules = new ArrayList<TableauRule>();
 
-		if ((!PelletOptions.USE_PSEUDO_NOMINALS && expr.hasNominal()) || implicitNominals()) {
+		if ((!PelletOptions.USE_PSEUDO_NOMINALS && expr.hasNominal())) {
 			tableauRules.add(nominalRule);
 
 			if (expr.hasCardinalityQ()) {
@@ -235,28 +217,6 @@ public abstract class CompletionStrategy {
 		allValuesRule = new AllValuesRule(this);
 	}
 
-	protected boolean implicitNominals() {
-		Collection<Rule> rules = abox.getKB().getNormalizedRules().values();
-		for (Rule rule : rules) {
-			if (rule == null) {
-				continue;
-			}
-			
-            for (RuleAtom atom : rule.getBody()) {
-                if (atom instanceof DifferentIndividualsAtom) {
-                	return true;
-                }
-            }
-            
-            for (RuleAtom atom : rule.getHead()) {
-                if (atom instanceof SameIndividualAtom) {
-                	return true;
-                }
-            }
-        }
-		
-		return false;
-	}
 
 	public void initialize(Expressivity expressivity) {
 		mergeList = new ArrayList<NodeMerge>();
@@ -312,9 +272,8 @@ public abstract class CompletionStrategy {
 			return;
 		}
 
-		if (log.isLoggable(Level.FINE)) {
-			log.fine("Initialize started");
-		}
+			log.info("Initialize started");
+
 
 		abox.setBranch(0);
 
@@ -363,20 +322,17 @@ public abstract class CompletionStrategy {
 			}
 
 			// The top object role isn't in the edge list, so pretend it exists
-			applyPropertyRestrictions(n, topRole, n, DependencySet.INDEPENDENT);
+			applyPropertyRestrictions(n, topRole, n, TimeDS.INDEPENDENT());
 		}
 
-		if (log.isLoggable(Level.FINE)) {
-			log.fine("Merging: " + mergeList);
-		}
+		log.info("Merging: " + mergeList);
 
 		if (!mergeList.isEmpty()) {
 			mergeAll();
 		}
 
-		if (log.isLoggable(Level.FINE)) {
-			log.fine("Initialize finished");
-		}
+			log.info("Initialize finished");
+
 
 		abox.setBranch(abox.getBranches().size() + 1);
 		abox.stats.treeDepth = 1;
@@ -391,7 +347,7 @@ public abstract class CompletionStrategy {
 	 */
 	public abstract void complete(Expressivity expr);
 
-	public Individual createFreshIndividual(Individual parent, DependencySet ds) {
+	public Individual createFreshIndividual(Individual parent, TimeDS ds) {
 		Individual ind = abox.addFreshIndividual(parent, ds);
 
 		applyUniversalRestrictions(ind);
@@ -400,15 +356,15 @@ public abstract class CompletionStrategy {
 	}
 
 	void applyUniversalRestrictions(Individual node) {
-		addType(node, ATermUtils.TOP, DependencySet.INDEPENDENT);
+		addType(node, ATermUtils.TOP, TimeDS.INDEPENDENT());
 
 		Set<Role> reflexives = abox.getKB().getRBox().getReflexiveRoles();
 		for (Iterator<Role> i = reflexives.iterator(); i.hasNext();) {
 			Role r = i.next();
-			if (log.isLoggable(Level.FINE) && !node.hasRNeighbor(r, node)) {
-				log.fine("REF : " + node + " " + r);
+			if (!node.hasRNeighbor(r, node)) {
+				log.info("reflexive  " + node + " " + r);
 			}
-			addEdge(node, r, node, r.getExplainReflexive());
+			addEdge(node, r, node, TimeDS.universal(r.getExplainReflexive()));
 			if (node.isMerged()) {
 				return;
 			}
@@ -416,13 +372,13 @@ public abstract class CompletionStrategy {
 
 		Role topObjProp = abox.getKB().getRole(ATermUtils.TOP_OBJECT_PROPERTY);
 		for (ATermAppl domain : topObjProp.getDomains()) {
-			addType(node, domain, topObjProp.getExplainDomain(domain));
+			addType(node, domain, TimeDS.universal(topObjProp.getExplainDomain(domain)));
 			if (node.isMerged()) {
 				continue;
 			}
 		}
 		for (ATermAppl range : topObjProp.getRanges()) {
-			addType(node, range, topObjProp.getExplainRange(range));
+			addType(node, range, TimeDS.universal(topObjProp.getExplainRange(range)));
 			if (node.isMerged()) {
 				continue;
 			}
@@ -430,120 +386,76 @@ public abstract class CompletionStrategy {
 
 	}
 
-	public void addType(Node node, ATermAppl c, DependencySet ds) {
+	public void addType(Node node, ATermAppl c, TimeDS timeDS) {
 		if (abox.isClosed()) {
 			return;
 		}
-
-		node.addType(c, ds);
-		if (node.isLiteral()) {
-			final Literal l = (Literal) node;
-			final NodeMerge mtc = l.getMergeToConstant();
-			if (mtc != null) {
-				l.clearMergeToConstant();
-				Literal mergeTo = abox.getLiteral(mtc.getTarget());
-				mergeTo(l, mergeTo, mtc.getDepends());
-				node = mergeTo;
-			}
+		timeDS = node.addType(c, timeDS);
+		if (timeDS != null && !timeDS.isEmpty()) {
+			if (PelletOptions.ADD_LOGS)
+				log.info("add type " + node + " : " + ATermUtils.toString(c) + " ON " + timeDS);
 		}
 
-		// update dependency index for this node
-		if (PelletOptions.USE_INCREMENTAL_DELETION) {
-			abox.getKB().getDependencyIndex().addTypeDependency(node.getName(), c, ds);
-		}
+		timeDS = node.getDepends(c);
 
-		if (log.isLoggable(Level.FINER)) {
-			log.finer("ADD: " + node + " " + c + " - " + ds + " " + ds.getExplain());
-		}
+
+
+
+//		ROBERT BROKEN
+//		if (node.isLiteral()) {
+//			final Literal l = (Literal) node;
+//			final NodeMerge mtc = l.getMergeToConstant();
+//			if (mtc != null) {
+//				l.clearMergeToConstant();
+//				Literal mergeTo = abox.getLiteral(mtc.getTarget());
+//				mergeTo(l, mergeTo, mtc.getDepends());
+//				node = mergeTo;
+//			}
+//		}
+
+
+//
+//		if (addTypeLog) {
+//			log.info("add type " + node + " : " + ATermUtils.toString(c) + " ON " + timeDS);
+//		} else {
+//			addTypeLog = true;
+//		}
 
 		if (c.getAFun().equals(ATermUtils.ANDFUN)) {
 			for (ATermList cs = (ATermList) c.getArgument(0); !cs.isEmpty(); cs = cs.getNext()) {
 				ATermAppl conj = (ATermAppl) cs.getFirst();
 
-				addType(node, conj, ds);
+				addType(node, conj, timeDS);
 
 				node = node.getSame();
 			}
 		}
 		else if (c.getAFun().equals(ATermUtils.ALLFUN)) {
-			allValuesRule.applyAllValues((Individual) node, c, ds);
+			allValuesRule.applyAllValues((Individual) node, c, timeDS);
 		}
 		else if (c.getAFun().equals(ATermUtils.SELFFUN)) {
 			ATermAppl pred = (ATermAppl) c.getArgument(0);
 			Role role = abox.getRole(pred);
-			if (log.isLoggable(Level.FINE) && !((Individual) node).hasRSuccessor(role, node)) {
-				log.fine("SELF: " + node + " " + role + " " + node.getDepends(c));
+			if (log.isLoggable(Level.INFO) && !((Individual) node).hasRSuccessor(role, node)) {
+				log.info("SELF: " + node + " " + role + " " + node.getDepends(c));
 			}
-			addEdge((Individual) node, role, node, ds);
+			addEdge((Individual) node, role, node, timeDS);
 		}
 		// else if( c.getAFun().equals( ATermUtils.VALUE ) ) {
 		// applyNominalRule( (Individual) node, c, ds);
 		// }
 	}
 
-	/**
-	 * This method updates the queue in the event that there is an edge added between two nodes. The individual must be
-	 * added back onto the MAXLIST
-	 */
-	protected void updateQueueAddEdge(Individual subj, Role pred, Node obj) {
-		// for each min and max card restrictions for the subject, a new
-		// queueElement must be generated and added
-		List<ATermAppl> types = subj.getTypes(Node.MAX);
-		int size = types.size();
-		for (int j = 0; j < size; j++) {
-			ATermAppl c = types.get(j);
-			ATermAppl max = (ATermAppl) c.getArgument(0);
-			Role r = abox.getRole(max.getArgument(0));
-			if (pred.isSubRoleOf(r)) {
-				QueueElement newElement = new QueueElement(subj, c);
-				abox.getCompletionQueue().add(newElement, NodeSelector.MAX_NUMBER);
-				abox.getCompletionQueue().add(newElement, NodeSelector.CHOOSE);
-			}
-		}
 
-		// if the predicate has an inverse or is inversefunctional and the obj
-		// is an individual, then add the object to the list.
-		if (obj instanceof Individual) {
-			types = ((Individual) obj).getTypes(Node.MAX);
-			size = types.size();
-			for (int j = 0; j < size; j++) {
-				ATermAppl c = types.get(j);
-				ATermAppl max = (ATermAppl) c.getArgument(0);
-				Role r = abox.getRole(max.getArgument(0));
-
-				Role invR = pred.getInverse();
-
-				if (invR != null) {
-					if (invR.isSubRoleOf(r)) {
-						QueueElement newElement = new QueueElement(obj, c);
-						abox.getCompletionQueue().add(newElement, NodeSelector.MAX_NUMBER);
-						abox.getCompletionQueue().add(newElement, NodeSelector.CHOOSE);
-					}
-				}
-			}
-		}
-	}
-
-	public Edge addEdge(Individual subj, Role pred, Node obj, DependencySet ds) {
-		Edge edge = subj.addEdge(pred, obj, ds);
-
-		// add to the kb dependencies
-		if (PelletOptions.USE_INCREMENTAL_DELETION) {
-			abox.getKB().getDependencyIndex().addEdgeDependency(edge, ds);
-		}
-
+	public Edge addEdge(Individual subj, Role pred, Node obj, TimeDS timeDS) {
+		Edge edge = subj.addEdge(pred, obj, timeDS.copy());
 		if (PelletOptions.TRACK_BRANCH_EFFECTS) {
 			abox.getBranchEffectTracker().add(abox.getBranch(), subj.getName());
 			abox.getBranchEffectTracker().add(abox.getBranch(), obj.getName());
 		}
 
-		if (PelletOptions.USE_COMPLETION_QUEUE) {
-			// update the queue as we are adding an edge - we must add
-			// elements to the MAXLIST
-			updateQueueAddEdge(subj, pred, obj);
-		}
-
 		if (edge != null) {
+			timeDS = edge.getDepends();
 			// note that we do not need to enforce the guess rule for
 			// datatype properties because we may only have inverse
 			// functional datatype properties which will be handled
@@ -562,11 +474,11 @@ public abstract class CompletionStrategy {
 					}
 
 					GuessBranch newBranch = new GuessBranch(abox, this, o, pred.getInverse(), guessMin, max,
-					                ATermUtils.TOP, ds);
+					                ATermUtils.TOP, timeDS.copy());
 					addBranch(newBranch);
 
 					// try a merge that does not trivially fail
-					if (newBranch.tryNext() == false) {
+					if (!newBranch.tryNext()) {
 						return edge;
 					}
 
@@ -580,7 +492,7 @@ public abstract class CompletionStrategy {
 				}
 			}
 
-			applyPropertyRestrictions(subj, pred, obj, ds);
+			applyPropertyRestrictions(subj, pred, obj, timeDS);
 		}
 		
 		return edge;
@@ -590,8 +502,8 @@ public abstract class CompletionStrategy {
 		applyPropertyRestrictions(edge.getFrom(), edge.getRole(), edge.getTo(), edge.getDepends());
 	}
 
-	void applyPropertyRestrictions(Individual subj, Role pred, Node obj, DependencySet ds) {
-		applyDomainRange(subj, pred, obj, ds);
+	void applyPropertyRestrictions(Individual subj, Role pred, Node obj, TimeDS timeDS) {
+		applyDomainRange(subj, pred, obj, timeDS);
 		if (subj.isPruned() || obj.isPruned()) {
 			return;
 		}
@@ -599,38 +511,42 @@ public abstract class CompletionStrategy {
 		if (subj.isPruned() || obj.isPruned()) {
 			return;
 		}
-		applyDisjointness(subj, pred, obj, ds);
-		allValuesRule.applyAllValues(subj, pred, obj, ds);
+		applyDisjointness(subj, pred, obj, timeDS);
+		allValuesRule.applyAllValues(subj, pred, obj, timeDS);
 		if (subj.isPruned() || obj.isPruned()) {
 			return;
 		}
 		if (pred.isObjectRole()) {
 			Individual o = (Individual) obj;
-			allValuesRule.applyAllValues(o, pred.getInverse(), subj, ds);
-			checkReflexivitySymmetry(subj, pred, o, ds);
-			checkReflexivitySymmetry(o, pred.getInverse(), subj, ds);
-			applyDisjointness(o, pred.getInverse(), subj, ds);
+			allValuesRule.applyAllValues(o, pred.getInverse(), subj, timeDS);
+			checkReflexivitySymmetry(subj, pred, o, timeDS);
+			checkReflexivitySymmetry(o, pred.getInverse(), subj, timeDS);
+			applyDisjointness(o, pred.getInverse(), subj, timeDS);
 		}
 	}
 
-	void applyDomainRange(Individual subj, Role pred, Node obj, DependencySet ds) {
+	void applyDomainRange(Individual subj, Role pred, Node obj, TimeDS timeDS) {
 		Set<ATermAppl> domains = pred.getDomains();
 		Set<ATermAppl> ranges = pred.getRanges();
 
 		for (ATermAppl domain : domains) {
-			if (log.isLoggable(Level.FINE) && !subj.hasType(domain)) {
-				log.fine("DOM : " + obj + " <- " + pred + " <- " + subj + " : " + ATermUtils.toString(domain));
+			if (log.isLoggable(Level.INFO) && !subj.hasType(domain)) {
+				log.info("add domain type  " + ATermUtils.toString(domain) + " for " + "("+subj+", "+pred+", "+obj+")");
 			}
-			addType(subj, domain, ds.union(pred.getExplainDomain(domain), abox.doExplanation()));
+			TimeDS ds = timeDS.copy();
+			ds.addExplain(pred.getExplainDomain(domain), abox.doExplanation());
+			addType(subj, domain, ds);
 			if (subj.isPruned() || obj.isPruned()) {
 				return;
 			}
 		}
 		for (ATermAppl range : ranges) {
-			if (log.isLoggable(Level.FINE) && !obj.hasType(range)) {
-				log.fine("RAN : " + subj + " -> " + pred + " -> " + obj + " : " + ATermUtils.toString(range));
+			if (log.isLoggable(Level.INFO) && !obj.hasType(range)) {
+				log.info("add range type  " + ATermUtils.toString(range) + " for " + "("+subj+", "+pred+", "+obj+")");
 			}
-			addType(obj, range, ds.union(pred.getExplainRange(range), abox.doExplanation()));
+			TimeDS ds = timeDS.copy();
+			ds.addExplain(pred.getExplainRange(range), abox.doExplanation());
+			addType(obj, range, ds);
 			if (subj.isPruned() || obj.isPruned()) {
 				return;
 			}
@@ -638,29 +554,29 @@ public abstract class CompletionStrategy {
 	}
 
 	void applyFunctionality(Individual subj, Role pred, Node obj) {
-		DependencySet maxCardDS = pred.isFunctional() ? pred.getExplainFunctional() : subj.hasMax1(pred);
+		TimeDS maxCardDS = pred.isFunctional() ? TimeDS.universal(pred.getExplainFunctional()) : subj.hasMax1(pred);
 
-		if (maxCardDS != null) {
+		if (maxCardDS != null && !maxCardDS.isEmpty()) {
 			maxRule.applyFunctionalMaxRule(subj, pred, ATermUtils.getTop(pred), maxCardDS);
 		}
 
 		if (pred.isDatatypeRole() && pred.isInverseFunctional()) {
-			applyFunctionalMaxRule((Literal) obj, pred, DependencySet.INDEPENDENT);
+			applyFunctionalMaxRule((Literal) obj, pred, TimeDS.INDEPENDENT());
 		}
 		else if (pred.isObjectRole()) {
 			Individual val = (Individual) obj;
 			Role invR = pred.getInverse();
 
-			maxCardDS = invR.isFunctional() ? invR.getExplainFunctional() : val.hasMax1(invR);
+			maxCardDS = invR.isFunctional() ? TimeDS.universal(invR.getExplainFunctional()) : val.hasMax1(invR);
 
-			if (maxCardDS != null) {
+			if (maxCardDS != null && !maxCardDS.isEmpty()) {
 				maxRule.applyFunctionalMaxRule(val, invR, ATermUtils.TOP, maxCardDS);
 			}
 		}
 
 	}
 
-	void applyDisjointness(Individual subj, Role pred, Node obj, DependencySet ds) {
+	void applyDisjointness(Individual subj, Role pred, Node obj, TimeDS timeDS) {
 		// TODO what about inv edges?
 		// TODO improve this check
 		Set<Role> disjoints = pred.getDisjointRoles();
@@ -672,123 +588,130 @@ public abstract class CompletionStrategy {
 			Edge otherEdge = edges.edgeAt(i);
 
 			if (disjoints.contains(otherEdge.getRole())) {
-				ds = ds.union(otherEdge.getDepends(), abox.doExplanation());
-				ds = ds.union(pred.getExplainDisjointRole(otherEdge.getRole()), abox.doExplanation());
-				abox.setClash(Clash.disjointProps(subj, ds, pred.getName(), otherEdge.getRole().getName()));
-				return;
+				TimeDS clashTimeDS = TimeDS.clash(timeDS, otherEdge.getDepends(), abox.doExplanation());
+				if (!clashTimeDS.isEmpty()) {
+					clashTimeDS.addExplain(pred.getExplainDisjointRole(otherEdge.getRole()), abox.doExplanation());
+					abox.setClash(Clash.disjointProps(subj, clashTimeDS, pred.getName(), otherEdge.getRole().getName()));
+					return;
+				}
 			}
 		}
 
 	}
 
-	void checkReflexivitySymmetry(Individual subj, Role pred, Individual obj, DependencySet ds) {
+	void checkReflexivitySymmetry(Individual subj, Role pred, Individual obj, TimeDS timeDS) {
+		TimeDS clashTimeDS;
 		if (pred.isAsymmetric() && obj.hasRSuccessor(pred, subj)) {
-			EdgeList edges = obj.getEdgesTo(subj, pred);
-			ds = ds.union(edges.edgeAt(0).getDepends(), abox.doExplanation());
-			if (PelletOptions.USE_TRACING) {
-				ds = ds.union(pred.getExplainAsymmetric(), abox.doExplanation());
+			Edge edge = obj.getEdgeTo(subj, pred);
+			clashTimeDS = TimeDS.clash(timeDS, edge.getDepends(), abox.doExplanation());
+			if (!clashTimeDS.isEmpty()) {
+				if (PelletOptions.USE_TRACING) {
+					clashTimeDS.addExplain(pred.getExplainAsymmetric(), abox.doExplanation());
+				}
+				abox.setClash(Clash.unexplained(subj, clashTimeDS, "Antisymmetric property " + pred));
 			}
-			abox.setClash(Clash.unexplained(subj, ds, "Antisymmetric property " + pred));
-		}
-		else if (subj.equals(obj)) {
+
+		} else if (subj.equals(obj)) {
 			if (pred.isIrreflexive()) {
-				abox.setClash(Clash.unexplained(subj, ds.union(pred.getExplainIrreflexive(), abox.doExplanation()),
-				                "Irreflexive property " + pred));
+				clashTimeDS = timeDS.copy();
+				clashTimeDS.addExplain(pred.getExplainIrreflexive(), abox.doExplanation());
+				abox.setClash(Clash.unexplained(subj, clashTimeDS, "Irreflexive property " + pred));
 			}
 			else {
 				ATerm notSelfP = ATermUtils.makeNot(ATermUtils.makeSelf(pred.getName()));
 				if (subj.hasType(notSelfP)) {
-					abox.setClash(Clash.unexplained(subj, ds.union(subj.getDepends(notSelfP), abox.doExplanation()),
-					                "Local irreflexive property " + pred));
+					clashTimeDS = TimeDS.clash(timeDS, subj.getDepends(notSelfP), abox.doExplanation());
+					abox.setClash(Clash.unexplained(subj, clashTimeDS,"Local irreflexive property " + pred));
 				}
 			}
 		}
 	}
 
-	protected void applyFunctionalMaxRule(Literal x, Role r, DependencySet ds) {
-		EdgeList edges = x.getInEdges().getEdges(r);
-
-		// if there is not more than one edge then func max rule won't be triggered
-		if (edges.size() <= 1) {
-			return;// continue;
-		}
-
-		// find all distinct R-neighbors of x
-		Set<Node> neighbors = edges.getNeighbors(x);
-
-		// if there is not more than one neighbor then func max rule won't be triggered
-		if (neighbors.size() <= 1) {
-			return;// continue;
-		}
-
-		Individual head = null;
-		DependencySet headDS = null;
-		// find a nominal node to use as the head
-		for (int edgeIndex = 0; edgeIndex < edges.size(); edgeIndex++) {
-			Edge edge = edges.edgeAt(edgeIndex);
-			Individual ind = edge.getFrom();
-
-			if (ind.isNominal() && (head == null || ind.getNominalLevel() < head.getNominalLevel())) {
-				head = ind;
-				headDS = edge.getDepends();
-			}
-		}
-
-		// if there is no nominal in the merge list we need to create one
-		if (head == null) {
-			head = abox.addFreshIndividual(null, ds);
-		}
-		else {
-			ds = ds.union(headDS, abox.doExplanation());
-		}
-
-		for (int i = 0; i < edges.size(); i++) {
-			Edge edge = edges.edgeAt(i);
-			Individual next = edge.getFrom();
-
-			if (next.isPruned()) {
-				continue;
-			}
-
-			// it is possible that there are multiple edges to the same
-			// node, e.g. property p and its super property, so check if
-			// we already merged this one
-			if (head.isSame(next)) {
-				continue;
-			}
-
-			ds = ds.union(edge.getDepends(), abox.doExplanation());
-
-			if (next.isDifferent(head)) {
-				ds = ds.union(next.getDifferenceDependency(head), abox.doExplanation());
-				if (r.isFunctional()) {
-					abox.setClash(Clash.functionalCardinality(x, ds, r.getName()));
-				}
-				else {
-					abox.setClash(Clash.maxCardinality(x, ds, r.getName(), 1));
-				}
-
-				break;
-			}
-
-			if (log.isLoggable(Level.FINE)) {
-				log.fine("FUNC: " + x + " for prop " + r + " merge " + next + " -> " + head + " " + ds);
-			}
-
-			mergeTo(next, head, ds);
-
-			if (abox.isClosed()) {
-				return;
-			}
-
-			if (head.isPruned()) {
-				ds = ds.union(head.getMergeDependency(true), abox.doExplanation());
-				head = head.getSame();
-			}
-		}
+//	ROBERT SLOMAL
+	protected void applyFunctionalMaxRule(Literal x, Role r, TimeDS ds) {
+//		EdgeList edges = x.getInEdges().getEdges(r);
+//
+//		// if there is not more than one edge then func max rule won't be triggered
+//		if (edges.size() <= 1) {
+//			return;// continue;
+//		}
+//
+//		// find all distinct R-neighbors of x
+//		Set<Node> neighbors = edges.getNeighbors(x);
+//
+//		// if there is not more than one neighbor then func max rule won't be triggered
+//		if (neighbors.size() <= 1) {
+//			return;// continue;
+//		}
+//
+//		Individual head = null;
+//		DependencySet headDS = null;
+//		// find a nominal node to use as the head
+//		for (int edgeIndex = 0; edgeIndex < edges.size(); edgeIndex++) {
+//			Edge edge = edges.edgeAt(edgeIndex);
+//			Individual ind = edge.getFrom();
+//
+//			if (ind.isNominal() && (head == null || ind.getNominalLevel() < head.getNominalLevel())) {
+//				head = ind;
+//				headDS = edge.getDepends();
+//			}
+//		}
+//
+//		// if there is no nominal in the merge list we need to create one
+//		if (head == null) {
+//			head = abox.addFreshIndividual(null, ds);
+//		}
+//		else {
+//			ds = ds.union(headDS, abox.doExplanation());
+//		}
+//
+//		for (int i = 0; i < edges.size(); i++) {
+//			Edge edge = edges.edgeAt(i);
+//			Individual next = edge.getFrom();
+//
+//			if (next.isPruned()) {
+//				continue;
+//			}
+//
+//			// it is possible that there are multiple edges to the same
+//			// node, e.g. property p and its super property, so check if
+//			// we already merged this one
+//			if (head.isSame(next)) {
+//				continue;
+//			}
+//
+//			ds = ds.union(edge.getDepends(), abox.doExplanation());
+//
+//			if (next.isDifferent(head)) {
+//				ds = ds.union(next.getDifferenceDependency(head), abox.doExplanation());
+//				if (r.isFunctional()) {
+//					abox.setClash(Clash.functionalCardinality(x, ds, r.getName()));
+//				}
+//				else {
+//					abox.setClash(Clash.maxCardinality(x, ds, r.getName(), 1));
+//				}
+//
+//				break;
+//			}
+//
+//			if (log.isLoggable(Level.INFO)) {
+//				log.info("FUNC: " + x + " for prop " + r + " merge " + next + " -> " + head + " " + ds);
+//			}
+//
+//			mergeTo(next, head, ds);
+//
+//			if (abox.isClosed()) {
+//				return;
+//			}
+//
+//			if (head.isPruned()) {
+//				ds = ds.union(head.getMergeDependency(true), abox.doExplanation());
+//				head = head.getSame();
+//			}
+//		}
 	}
 
-	private void mergeLater(Node y, Node z, DependencySet ds) {
+	private void mergeLater(Node y, Node z, TimeDS ds) {
 		mergeList.add(new NodeMerge(y, z, ds));
 	}
 
@@ -806,15 +729,15 @@ public abstract class CompletionStrategy {
 
 			Node y = abox.getNode(merge.getSource());
 			Node z = abox.getNode(merge.getTarget());
-			DependencySet ds = merge.getDepends();
+			TimeDS ds = merge.getDepends();
 
 			if (y.isMerged()) {
-				ds = ds.union(y.getMergeDependency(true), abox.doExplanation());
+				ds = TimeDS.union(ds, y.getMergeDependency(true), abox.doExplanation());
 				y = y.getSame();
 			}
 
 			if (z.isMerged()) {
-				ds = ds.union(z.getMergeDependency(true), abox.doExplanation());
+				ds = TimeDS.union(ds, z.getMergeDependency(true), abox.doExplanation());
 				z = z.getSame();
 			}
 
@@ -837,7 +760,8 @@ public abstract class CompletionStrategy {
 	 * @param ds
 	 *            Dependency of this merge operation
 	 */
-	public void mergeTo(Node y, Node z, DependencySet ds) {
+	public void mergeTo(Node y, Node z, TimeDS mergeDS) {
+		assert mergeDS.size() == 1;
 
 		// add to effected list
 		if (abox.getBranch() >= 0 && PelletOptions.TRACK_BRANCH_EFFECTS) {
@@ -845,36 +769,29 @@ public abstract class CompletionStrategy {
 			abox.getBranchEffectTracker().add(abox.getBranch(), z.getName());
 		}
 
-		// add to merge dependency to dependency index
-		if (PelletOptions.USE_INCREMENTAL_DELETION) {
-			abox.getKB().getDependencyIndex().addMergeDependency(y.getName(), z.getName(), ds);
-		}
-
 		if (y.isDifferent(z)) {
-			abox.setClash(Clash.nominal(y, y.getDifferenceDependency(z).union(ds, abox.doExplanation())));
+			abox.setClash(Clash.nominal(y, TimeDS.universal(mergeDS.ds().union(y.getDifferenceDependency(z).ds(), abox.doExplanation()))));
 			return;
-		}
-		else if (!y.isSame(z)) {
+		} else if (!y.isSame(z)) {
 			abox.setChanged(true);
 
 			if (merging) {
-				mergeLater(y, z, ds);
+				mergeLater(y, z, mergeDS);
 				return;
 			}
 
 			merging = true;
 
-			if (log.isLoggable(Level.FINE)) {
-				log.fine("MERG: " + y + " -> " + z + " " + ds);
-			}
 
-			ds = ds.copy(abox.getBranch());
+			mergeDS = mergeDS.copy(abox.getBranch());
+
+			log.info("merge: " + y + " to " + z + " ON " + mergeDS);
 
 			if (y instanceof Literal && z instanceof Literal) {
-				mergeLiterals((Literal) y, (Literal) z, ds);
+				mergeLiterals((Literal) y, (Literal) z, mergeDS);
 			}
 			else if (y instanceof Individual && z instanceof Individual) {
-				mergeIndividuals((Individual) y, (Individual) z, ds);
+				mergeIndividuals((Individual) y, (Individual) z, mergeDS);
 			}
 			else {
 				throw new InternalReasonerException("Invalid merge operation!");
@@ -892,11 +809,12 @@ public abstract class CompletionStrategy {
 	 *            Individual being pruned
 	 * @param x
 	 *            Individual that is being merged into
-	 * @param ds
+	 * @param mergeDS
 	 *            Dependency of this merge operation
 	 */
-	protected boolean mergeIndividuals(Individual y, Individual x, DependencySet ds) {
-		boolean merged = y.setSame(x, ds);
+	protected boolean mergeIndividuals(Individual y, Individual x, TimeDS mergeDS) {
+		assert(mergeDS.size() == 1);
+		boolean merged = y.setSame(x, mergeDS);
 		if (!merged) {
 			return false;
 		}
@@ -907,33 +825,33 @@ public abstract class CompletionStrategy {
 		x.setNominalLevel(Math.min(x.getNominalLevel(), y.getNominalLevel()));
 
 		// copy the types
-		Map<ATermAppl, DependencySet> types = y.getDepends();
-		for (Map.Entry<ATermAppl, DependencySet> entry : types.entrySet()) {
+		Map<ATermAppl, TimeDS> types = y.getDepends();
+		for (Map.Entry<ATermAppl, TimeDS> entry : types.entrySet()) {
 			ATermAppl yType = entry.getKey();
-			DependencySet finalDS = ds.union(entry.getValue(), abox.doExplanation());
-			addType(x, yType, finalDS);
+			TimeDS yTypeDS = entry.getValue().union(mergeDS.ds(), abox.doExplanation());
+			addType(x, yType, yTypeDS);
 		}
+
 
 		// for all edges (z, r, y) add an edge (z, r, x)
 		EdgeList inEdges = y.getInEdges();
 		for (int e = 0; e < inEdges.size(); e++) {
 			Edge edge = inEdges.edgeAt(e);
-
 			Individual z = edge.getFrom();
 			Role r = edge.getRole();
-			DependencySet finalDS = ds.union(edge.getDepends(), abox.doExplanation());
+			TimeDS edgeDS = edge.getDepends().union(mergeDS.ds(), abox.doExplanation());
 
 			// if y has a self edge then x should have the same self edge
 			if (y.equals(z)) {
-				addEdge(x, r, x, finalDS);
+				addEdge(x, r, x, edgeDS);
 			}
 			// if z is already a successor of x add the reverse edge
 			else if (x.hasSuccessor(z)) {
 				// FIXME what if there were no inverses in this expressitivity
-				addEdge(x, r.getInverse(), z, finalDS);
+				addEdge(x, r.getInverse(), z, edgeDS);
 			}
 			else {
-				addEdge(z, r, x, finalDS);
+				addEdge(z, r, x, edgeDS);
 			}
 
 			// only remove the edge from z and keep a copy in y for a
@@ -951,11 +869,11 @@ public abstract class CompletionStrategy {
 		}
 
 		// for all z such that y != z set x != z
-		x.inheritDifferents(y, ds);
+		x.inheritDifferents(y, mergeDS);
 
 		// we want to prune y early due to an implementation issue about literals
 		// if y has an outgoing edge to a literal with concrete value
-		y.prune(ds);
+		y.prune(mergeDS);
 
 		// for all edges (y, r, z) where z is a nominal add an edge (x, r, z)
 		EdgeList outEdges = y.getOutEdges();
@@ -965,9 +883,9 @@ public abstract class CompletionStrategy {
 
 			if (z.isNominal() && !y.equals(z)) {
 				Role r = edge.getRole();
-				DependencySet finalDS = ds.union(edge.getDepends(), abox.doExplanation());
+				TimeDS edgeDS = edge.getDepends().union(mergeDS.ds(), abox.doExplanation());
 
-				addEdge(x, r, z, finalDS);
+				addEdge(x, r, z, edgeDS);
 
 				// add to effected list
 				if (abox.getBranch() >= 0 && PelletOptions.TRACK_BRANCH_EFFECTS) {
@@ -977,7 +895,7 @@ public abstract class CompletionStrategy {
 				// do not remove edge here because prune will take care of that
 			}
 		}
-		
+
 		return true;
 	}
 
@@ -991,53 +909,55 @@ public abstract class CompletionStrategy {
 	 * @param ds
 	 *            Dependency of this merge operation
 	 */
-	protected void mergeLiterals(Literal y, Literal x, DependencySet ds) {
-		y.setSame(x, ds);
-
-		x.addAllTypes(y.getDepends(), ds);
-
-		// for all edges (z, r, y) add an edge (z, r, x)
-		EdgeList inEdges = y.getInEdges();
-		for (int e = 0; e < inEdges.size(); e++) {
-			Edge edge = inEdges.edgeAt(e);
-
-			Individual z = edge.getFrom();
-			Role r = edge.getRole();
-			DependencySet finalDS = ds.union(edge.getDepends(), abox.doExplanation());
-
-			addEdge(z, r, x, finalDS);
-
-			// only remove the edge from z and keep a copy in y for a
-			// possible restore operation in the future
-			z.removeEdge(edge);
-
-			// add to effected list
-			if (abox.getBranch() >= 0 && PelletOptions.TRACK_BRANCH_EFFECTS) {
-				abox.getBranchEffectTracker().add(abox.getBranch(), z.getName());
-			}
-		}
-
-		x.inheritDifferents(y, ds);
-
-		y.prune(ds);
-
-		if (x.getNodeDepends() == null || y.getNodeDepends() == null) {
-			throw new NullPointerException();
-		}
+//	BROKEN BY ROBERT
+	protected void mergeLiterals(Literal y, Literal x, TimeDS ds) {
+//		y.setSame(x, ds);
+//
+////		x.addAllTypes(y.getDepends(), ds);
+//
+//		// for all edges (z, r, y) add an edge (z, r, x)
+//		EdgeList inEdges = y.getInEdges();
+//		for (int e = 0; e < inEdges.size(); e++) {
+//			Edge edge = inEdges.edgeAt(e);
+//
+//			Individual z = edge.getFrom();
+//			Role r = edge.getRole();
+//			DependencySet finalDS = TimeDS.union(ds, edge.getDepends(), abox.doExplanation());
+//
+//			addEdge(z, r, x, finalDS);
+//
+//			// only remove the edge from z and keep a copy in y for a
+//			// possible restore operation in the future
+//			z.removeEdge(edge);
+//
+//			// add to effected list
+//			if (abox.getBranch() >= 0 && PelletOptions.TRACK_BRANCH_EFFECTS) {
+//				abox.getBranchEffectTracker().add(abox.getBranch(), z.getName());
+//			}
+//		}
+//
+//		x.inheritDifferents(y, ds);
+//
+//		y.prune(ds);
+//
+//		if (x.getNodeDepends() == null || y.getNodeDepends() == null) {
+//			throw new NullPointerException();
+//		}
 	}
 
-	public boolean setDifferent(Node y, Node z, DependencySet ds) {
+	public boolean setDifferent(Node y, Node z, TimeDS ds) {
 		return y.setDifferent(z, ds);
 	}
 	
-	public void restoreLocal(Individual ind, Branch br) {
+	public void restoreLocal(Individual ind, Branch br, Time time) {
 		abox.stats.localRestores++;
-		abox.setClash(null);
+		abox.getClash().getDepends().subtract(time);
+//		abox.setClash(null);
 		abox.setBranch(br.getBranch());
 
-		Map<Node, Boolean> visited = new HashMap<Node, Boolean>();
+		Map<Node, Boolean> visited = new HashMap<>();
 
-		restoreLocal(ind, br.getBranch(), visited);
+		restoreLocal(ind, br.getBranch(), visited, time);
 
 		for (Map.Entry<Node, Boolean> entry : visited.entrySet()) {
 			boolean restored = entry.getValue();
@@ -1047,8 +967,8 @@ public abstract class CompletionStrategy {
 		}
 	}
 
-	private void restoreLocal(Individual ind, int branch, Map<Node, Boolean> visited) {
-		boolean restored = ind.restore(branch);
+	private void restoreLocal(Individual ind, int branch, Map<Node, Boolean> visited, Time time) {
+		boolean restored = ind.restore(branch, time);
 		visited.put(ind, restored);
 
 		if (restored) {
@@ -1060,10 +980,10 @@ public abstract class CompletionStrategy {
 
 				if (succ.isLiteral()) {
 					visited.put(succ, Boolean.FALSE);
-					succ.restore(branch);
+					succ.restore(branch, time);
 				}
 				else {
-					restoreLocal(((Individual) succ), branch, visited);
+					restoreLocal(((Individual) succ), branch, visited, time);
 				}
 			}
 
@@ -1072,95 +992,51 @@ public abstract class CompletionStrategy {
 				if (visited.containsKey(pred)) {
 					continue;
 				}
-				restoreLocal(pred, branch, visited);
+				restoreLocal(pred, branch, visited, time);
 			}
 		}
 	}
 
-	public void restore(Branch br) {
+
+	public void restore(Branch br, Time time) {
 		// Timers timers = abox.getKB().timers;
 		// Timer timer = timers.startTimer("restore");
 		abox.setBranch(br.getBranch());
-		abox.setClash(null);
-		// Setting the anonCount to the value at the time of branch creation is incorrect
-		// when SMART_RESTORE option is turned on. If we create an anon node after branch
-		// creation but node depends on an earlier branch restore operation will not remove
-		// the node. But setting anonCount to a smaller number may mean the anonCount will
-		// be incremented to that value and creating a fresh anon node will actually reuse
-		// the not-removed node. The only advantage of setting anonCount to a smaller value
-		// is to keep the name of anon nodes smaller to make debugging easier. For this reason,
-		// the above line is not removed and under special circumstances may be uncommented
-		// to help debugging only with the intent that it will be commented again after
-		// debugging is complete
-		// abox.setAnonCount( br.getAnonCount() );
-		abox.rulesNotApplied = true;
+		abox.getClash().getDepends().subtract(time);
+		if (abox.getClash().getDepends().isEmpty()) {
+			abox.setClash(null);
+		}
 		mergeList.clear();
 
 		List<ATermAppl> nodeList = abox.getNodeNames();
 
-		if (log.isLoggable(Level.FINE)) {
-			log.fine("RESTORE: Branch " + br.getBranch());
-		}
+		log.info("RESTORE Branch " + br.getBranch() + (!PelletOptions.SPECIAL_LOGS ? " ON " + time : ""));
 
-		if (PelletOptions.USE_COMPLETION_QUEUE) {
-			// clear the all values list as they must have already fired and blocking never prevents the all values rule
-			// from firing
-			abox.getCompletionQueue().clearQueue(NodeSelector.UNIVERSAL);
 
-			// reset the queues
-			abox.getCompletionQueue().restore(br.getBranch());
-		}
-
-		// the restore may cause changes which require using the allValuesRule -
-		// incremental change tracker will track those
-		if (PelletOptions.USE_INCREMENTAL_CONSISTENCY) {
-			abox.getIncrementalChangeTracker().clear();
-		}
-
-		// for each node we either need to restore the node to the status it
-		// had at the time branch was created or remove the node completely if
-		// it was created after the branch. To optimize removing elements from
-		// the ArrayList we compute the block to be deleted and then remove all
-		// at once to utilize the underlying System.arraycopy operation.
-
-		// number of nodes in the nodeList
 		int nodeCount = nodeList.size();
-		// number of nodes
 		int deleteBlock = 0;
 		for (int i = 0; i < nodeCount; i++) {
-			// get the node name
 			ATermAppl a = nodeList.get(i);
-			// and the corresponding node
 			Node node = abox.getNode(a);
 
-			// node dependency tells us if the node was created after the branch
-			// and if that is the case we remove it completely
-			// NOTE: for literals, node.getNodeDepends() may be null when a literal value branch is
-			// restored, in that case we can remove the literal since there is no other reference
-			// left for that literal
-			if (node.getNodeDepends() == null || node.getNodeDepends().getBranch() > br.getBranch()) {
-				// remove the node from the node map
+			TimeDS timeDS = node.getNodeDepends();
+
+			if (timeDS.restoreByBranch(br.getBranch(), time) && timeDS.isEmpty()) {
 				abox.removeNode(a);
-				// if the node is merged to another one we should remove it from
-				// the other node's merged list
 				if (node.isMerged()) {
 					node.undoSetSame();
 				}
-				// increment the size of block that will be deleted
 				deleteBlock++;
-			}
-			else {
+				if (PelletOptions.RESTORE_LOGS)
+					log.info("RESTORE: delete node " + node);
+			} else {
 				// this node will be restored to previous state not removed
 
 				// first if there are any nodes collected earlier delete them
 				if (deleteBlock > 0) {
-					// create the sub list for nodes to be removed
 					List<ATermAppl> subList = nodeList.subList(i - deleteBlock, i);
-					if (log.isLoggable(Level.FINE)) {
-						log.fine("Remove nodes " + subList);
-					}
-					// clear the sublist causing all elements to removed from nodeList
 					subList.clear();
+
 					// update counters
 					nodeCount -= deleteBlock;
 					i -= deleteBlock;
@@ -1169,7 +1045,7 @@ public abstract class CompletionStrategy {
 
 				// restore only if not tracking branch effects
 				if (!PelletOptions.TRACK_BRANCH_EFFECTS) {
-					node.restore(br.getBranch());
+					node.restore(br.getBranch(), time);
 				}
 			}
 		}
@@ -1185,7 +1061,7 @@ public abstract class CompletionStrategy {
 			for (ATermAppl a : effected) {
 				Node n = abox.getNode(a);
 				if (n != null) {
-					n.restore(br.getBranch());
+					n.restore(br.getBranch(), time);
 				}
 			}
 		}
@@ -1214,11 +1090,6 @@ public abstract class CompletionStrategy {
 		}
 
 		completionTimer.check();
-
-		// CHW - added for incremental deletion support
-		if (PelletOptions.USE_INCREMENTAL_DELETION) {
-			abox.getKB().getDependencyIndex().addBranchAddDependency(newBranch);
-		}
 	}
 
 	void printBlocked() {
@@ -1245,10 +1116,19 @@ public abstract class CompletionStrategy {
 		return name.substring(lastIndex + 1);
 	}
 
-	protected void restoreAllValues() {
+	public void restoreAllValues() {
 		for (Iterator<Individual> i = new IndividualIterator(abox); i.hasNext();) {
 			Individual ind = i.next();
 			allValuesRule.apply(ind);
 		}
+	}
+
+	public List<NodeMerge> getMergeList() {
+		return mergeList;
+	}
+
+	protected boolean addTypeLog = true;
+	public void skipNextAddLog() {
+		addTypeLog = false;
 	}
 }

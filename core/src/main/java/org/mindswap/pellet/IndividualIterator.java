@@ -9,11 +9,6 @@ package org.mindswap.pellet;
 import java.util.Iterator;
 import java.util.List;
 
-import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
-
 import aterm.ATermAppl;
 
 
@@ -67,17 +62,18 @@ public class IndividualIterator implements Iterator<Individual> {
 		findNext();
 		return index < stop;
 	}
-	
-	public void reset(NodeSelector s) {
-		index = 0;
-		findNext();
-	}
+
 
 	public Individual next() {
 		findNext();
 		Individual ind = abox.getIndividual(nodeList.get(index++));
 		
 		return ind;
+	}
+
+	public void reset() {
+		index = 0;
+		findNext();
 	}
 
 	public void remove() {

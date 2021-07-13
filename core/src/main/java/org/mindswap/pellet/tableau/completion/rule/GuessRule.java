@@ -8,15 +8,14 @@ package org.mindswap.pellet.tableau.completion.rule;
 
 import java.util.List;
 
-import org.mindswap.pellet.DependencySet;
 import org.mindswap.pellet.Edge;
 import org.mindswap.pellet.EdgeList;
 import org.mindswap.pellet.Individual;
 import org.mindswap.pellet.Node;
 import org.mindswap.pellet.Role;
+import org.mindswap.pellet.TimeDS;
 import org.mindswap.pellet.tableau.branch.GuessBranch;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -40,7 +39,7 @@ import aterm.ATermInt;
  */
 public class GuessRule extends AbstractTableauRule {
 	public GuessRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.GUESS, BlockingType.NONE );
+		super( strategy, BlockingType.NONE );
 	}
 
 	public void apply(Individual x) {
@@ -108,15 +107,15 @@ public class GuessRule extends AbstractTableauRule {
 		if (guessMin == 0)
 			guessMin = 1;
 
-		// TODO not clear what the correct ds is so be pessimistic and include everything
-		DependencySet ds = x.getDepends(mc);
+		// TODO not clear what the correct timeDS is so be pessimistic and include everything
+		TimeDS timeDS = x.getDepends(mc);
 		edges = x.getRNeighborEdges(r);
 		for (int e = 0; e < edges.size(); e++) {
 			Edge edge = edges.edgeAt(e);
-			ds = ds.union(edge.getDepends(), strategy.getABox().doExplanation());
+			timeDS = timeDS.union(edge.getDepends(), strategy.getABox().doExplanation());
 		}
 
-		GuessBranch newBranch = new GuessBranch(strategy.getABox(), strategy, x, r, guessMin, n, c, ds);
+		GuessBranch newBranch = new GuessBranch(strategy.getABox(), strategy, x, r, guessMin, n, c, timeDS);
 		strategy.addBranch(newBranch);
 
 		newBranch.tryNext();

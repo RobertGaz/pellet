@@ -39,16 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 
-import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.Clash;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.EdgeList;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.IndividualIterator;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.NodeMerge;
-import org.mindswap.pellet.PelletOptions;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.tableau.blocking.BlockingFactory;
 import org.mindswap.pellet.tableau.branch.Branch;
 import org.mindswap.pellet.tableau.cache.CacheSafety;
@@ -152,8 +143,8 @@ public class EmptySRIQStrategy extends CompletionStrategy {
 				break;
 			}
 
-			if( log.isLoggable( Level.FINE ) ) {
-				log.fine( "Starting with node " + x );
+			if( log.isLoggable( Level.INFO ) ) {
+				log.info( "Starting with node " + x );
 				abox.printTree();
 
 				abox.validate();
@@ -162,8 +153,7 @@ public class EmptySRIQStrategy extends CompletionStrategy {
 			expand( x );
 
 			if( abox.isClosed() ) {
-				if( log.isLoggable( Level.FINE ) )
-					log.fine( "Clash at Branch (" + abox.getBranch() + ") " + abox.getClash() );
+				log.info( "Clash at Branch (" + abox.getBranch() + ") " + abox.getClash() );
 
 				if( backtrack() )
 					abox.setClash( null );
@@ -260,7 +250,7 @@ public class EmptySRIQStrategy extends CompletionStrategy {
 				}
 				else {
 					// set the clash information to be the union of all types
-					DependencySet ds = DependencySet.EMPTY;
+					TimeDS ds = TimeDS.EMPTY();
 					for( Iterator<ATermAppl> i = x.getTypes().iterator(); i.hasNext(); ) {
 						ATermAppl c = i.next();
 						ds = ds.union( x.getDepends( c ), abox.doExplanation() );
@@ -463,8 +453,9 @@ public class EmptySRIQStrategy extends CompletionStrategy {
 	}
 
 	@Override
-	public void restoreLocal(Individual ind, Branch br) {
-		restore( br );
+	public void restoreLocal(Individual ind, Branch br, Time time) {
+//		ROBERT SLOMAL
+//		restore( br );
 	}
 
 	public void restore(Branch br) {
@@ -518,7 +509,8 @@ public class EmptySRIQStrategy extends CompletionStrategy {
 				}
 			}
 			else {
-				node.restore( br.getBranch() );
+//				ROBERT SLOMAL
+//				node.restore( br.getBranch() );
 
 				// FIXME should we look at the clash path or clash node
 				if( node.equals( clashNode ) ) {
@@ -572,7 +564,8 @@ public class EmptySRIQStrategy extends CompletionStrategy {
 				newBranch.setTryNext( newBranch.getTryNext() + 1 );
 
 				if( newBranch.getTryNext() < newBranch.getTryCount() ) {
-					restore( newBranch );
+//					ROBERT SLOMAL
+//					restore( newBranch );
 
 					branchFound = newBranch.tryNext();
 				}

@@ -50,12 +50,6 @@ import aterm.ATermList;
 
 import com.clarkparsia.pellet.datatypes.Datatypes;
 import com.clarkparsia.pellet.datatypes.types.real.XSDInteger;
-import com.clarkparsia.pellet.rules.RulesToATermTranslator;
-import com.clarkparsia.pellet.rules.model.AtomIVariable;
-import com.clarkparsia.pellet.rules.model.ClassAtom;
-import com.clarkparsia.pellet.rules.model.IndividualPropertyAtom;
-import com.clarkparsia.pellet.rules.model.Rule;
-import com.clarkparsia.pellet.rules.model.RuleAtom;
 import com.hp.hpl.jena.vocabulary.XSD;
 
 public class TracingTests extends AbstractKBTests {
@@ -619,43 +613,7 @@ public class TracingTests extends AbstractKBTests {
 
 	}
 
-	@Test
-	public void testRuleExplanation() {
-		KnowledgeBase kb = new KnowledgeBase();
 
-		ATermAppl C = ATermUtils.makeTermAppl( "C" );
-		ATermAppl D = ATermUtils.makeTermAppl( "D" );
-		ATermAppl i = ATermUtils.makeTermAppl( "i" );
-
-		List<RuleAtom> body = new ArrayList<RuleAtom>();
-		List<RuleAtom> head = new ArrayList<RuleAtom>();
-
-		body.add( new ClassAtom( C, new AtomIVariable( "x" ) ) );
-		head.add( new ClassAtom( D, new AtomIVariable( "x" ) ) );
-
-		Rule rule = new Rule( head, body );
-
-		kb.addClass( C );
-		kb.addClass( D );
-		kb.addIndividual( i );
-		kb.addType( i, C );
-		kb.addRule( rule );
-
-		kb.setDoExplanation( true );
-		assertTrue( kb.isConsistent() );
-		assertTrue( kb.isType( i, D ) );
-		Set<ATermAppl> actual = kb.getExplanationSet();
-		kb.setDoExplanation( false );
-
-		Set<ATermAppl> expected = new HashSet<ATermAppl>();
-		ATermAppl x = ATermUtils.makeVar( "x" );
-		ATermAppl[] b = new ATermAppl[] { ATermUtils.makeTypeAtom( x, C ) };
-		ATermAppl[] h = new ATermAppl[] { ATermUtils.makeTypeAtom( x, D ) };
-		expected.add( ATermUtils.makeTypeAtom( i, C ) );
-		expected.add( ATermUtils.makeRule( h, b ) );
-
-		assertEquals( expected, actual );
-	}
 	
 	@Test
 	public void testInverseCardinality1() {
@@ -910,39 +868,7 @@ public class TracingTests extends AbstractKBTests {
 		    ATermUtils.makePropAtom(q, a, b));
 	}
 	
-	@Test
-	public void ruleInteractionWithInverses() {
-		// Tests #446
-		
-		classes(A);
-		objectProperties(p, q, r, f);
-		dataProperties(p);
-		individuals(a, b, c);
 
-		AtomIVariable x = new AtomIVariable("x");
-		AtomIVariable y = new AtomIVariable("y");
-		AtomIVariable z = new AtomIVariable("z");
-
-		kb.addSymmetricProperty(p);
-		kb.addInverseProperty(q, r);
-
-		kb.addPropertyValue(p, c, a);
-		kb.addPropertyValue(f, a, b);
-
-		List<RuleAtom> body = Arrays.<RuleAtom>asList(new IndividualPropertyAtom(f, x, y), new IndividualPropertyAtom(p, x, z));
-		List<RuleAtom> head = Arrays.<RuleAtom>asList(new IndividualPropertyAtom(r, z, y));
-		Rule rule = new Rule(head, body); 
-		kb.addRule(rule);
-		
-		explainEntailment(kb.hasPropertyValue(b, q, c), 
-		    ATermUtils.makePropAtom(p, c, a),
-		    ATermUtils.makePropAtom(f, a, b),
-		    ATermUtils.makeSymmetric(p),
-		    ATermUtils.makeInvProp(q, r),
-		    new RulesToATermTranslator().translate(rule));
-		   
-	}
-	
 	@Test
 	public void propertyChainInstances() {
 		// Tests #367

@@ -7,20 +7,20 @@
 package org.mindswap.pellet.tableau.branch;
 
 import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.DependencySet;
 import org.mindswap.pellet.Node;
+import org.mindswap.pellet.TimeDS;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
 
 public class ChooseBranch extends DisjunctionBranch {
-    public ChooseBranch( ABox abox, CompletionStrategy completion, Node node, ATermAppl c, DependencySet ds ) {
+    public ChooseBranch( ABox abox, CompletionStrategy completion, Node node, ATermAppl c, TimeDS ds ) {
         super( abox, completion, node, c, ds, new ATermAppl[] { ATermUtils.negate(c), c } );    
     }
     
     protected String getDebugMsg() {
-        return "CHOS: Branch (" + getBranch() + ") try (" + (getTryNext() + 1) + "/" + getTryCount()
-            + ") " + node.getName() + " " +  getDisjunct(getTryNext());
+        return "CHOS  Branch(" + getBranch() + "), try(" + (getTryNext() + 1) + "/" + getTryCount()
+            + "). " + node + ":" +  ATermUtils.toString(getDisjunct(getTryNext())) + " ON " + getTryNextTime();
     }
 }

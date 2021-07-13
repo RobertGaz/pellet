@@ -8,15 +8,19 @@
 
 package org.mindswap.pellet.tableau.completion;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Level;
 
 import org.mindswap.pellet.ABox;
 import org.mindswap.pellet.IndividualIterator;
 import org.mindswap.pellet.PelletOptions;
+import org.mindswap.pellet.Time;
+import org.mindswap.pellet.TimeDS;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tableau.branch.Branch;
+import org.mindswap.pellet.tableau.branch.DisjunctionBranch;
+import org.mindswap.pellet.tableau.branch.IndividualBranch;
+import org.mindswap.pellet.tableau.branch.MaxBranch;
 import org.mindswap.pellet.tableau.completion.rule.TableauRule;
 
 import com.clarkparsia.pellet.expressivity.Expressivity;
@@ -38,6 +42,7 @@ import com.clarkparsia.pellet.expressivity.Expressivity;
  * @author Evren Sirin
  */
 public class SROIQStrategy extends CompletionStrategy {
+	private boolean branchDeleted = false;
 	public SROIQStrategy(ABox abox) {
 		super( abox );
 	}
@@ -45,82 +50,101 @@ public class SROIQStrategy extends CompletionStrategy {
 	protected boolean backtrack() {
 		boolean branchFound = false;
 		abox.stats.backtracks++;
-		while( !branchFound ) {
+		List<Branch> branches = abox.getBranches();
+		while (!branchFound) {
 			completionTimer.check();
-
-			int lastBranch = abox.getClash().getDepends().max();
-
-			// not more branches to try
-			if( lastBranch <= 0 )
-				return false;
-			else if( lastBranch > abox.getBranches().size() )
-				throw new InternalReasonerException( "Backtrack: Trying to backtrack to branch "
-						+ lastBranch + " but has only " + abox.getBranches().size()
-						+ " branches. Clash found: " + abox.getClash() );
-			else if( PelletOptions.USE_INCREMENTAL_DELETION ) {
-				// get the last branch
-				Branch br = abox.getBranches().get( lastBranch - 1 );
-
-				// if this is the last disjunction, merge pair, etc. for the
-				// branch (i.e, br.tryNext == br.tryCount-1) and there are no
-				// other branches to test (ie.
-				// abox.getClash().depends.size()==2),
-				// then update depedency index and return false
-				if( (br.getTryNext() == br.getTryCount() - 1)
-						&& abox.getClash().getDepends().size() == 2 ) {
-					abox.getKB().getDependencyIndex().addCloseBranchDependency( br,
-							abox.getClash().getDepends() );
+			for (int br : abox.getClash().getDepends().maxBranches()) {
+				// no more branches to try
+				if (br <= 0)
 					return false;
+				if (br > branches.size())
+					throw new InternalReasonerException("Backtrack: Trying to backtrack to branch "
+							+ br + " but has only " + branches.size()
+							+ " branches. Clash found: " + abox.getClash());
+
+				Branch branch = branches.get(br - 1);
+
+				if (br != branch.getBranch())
+					throw new InternalReasonerException("Backtrack: Trying to backtrack to branch " + br + " but got " + branch.getBranch());
+
+			}
+
+			int targetBranch = abox.getClash().getDepends().max();
+
+			Branch branchVar = branches.get(targetBranch - 1);
+
+			TimeDS clashDS = abox.getClash().getDepends().partByMax(targetBranch);
+
+
+			if (branchVar instanceof IndividualBranch) {
+				IndividualBranch branch = (IndividualBranch) branchVar;
+
+				abox.stats.backjumps += (branches.size() - targetBranch);
+				if (!PelletOptions.SPECIAL_LOGS) {
+					log.info("(SROIQ) soon will restore max Branch(" + targetBranch + "). Deleting later branches " + Integer.sum(targetBranch, 1) + "..." + abox.getBranches().size() + "  from ABox.");
+				} else {
+					log.info("(SROIQ) soon will restore Branch(" + targetBranch + "). Deleting later branches " + Integer.sum(targetBranch, 1) + "..." + abox.getBranches().size() + "  from ABox.");
 				}
-			}
+				branches.subList( targetBranch, branches.size() ).clear();
+				branchDeleted = true;
 
-			List<Branch> branches = abox.getBranches();
-			abox.stats.backjumps += (branches.size() - lastBranch);
-			// CHW - added for incremental deletion support
-			if( PelletOptions.USE_TRACING && PelletOptions.USE_INCREMENTAL_CONSISTENCY ) {
-				// we must clean up the KB dependecny index
-				List<Branch> brList = branches.subList( lastBranch, branches.size() );
-				for( Iterator<Branch> it = brList.iterator(); it.hasNext(); ) {
-					// remove from the dependency index
-					abox.getKB().getDependencyIndex().removeBranchDependencies( it.next() );
+
+				// set the last clash before restore
+				if (branch.getTryNext() < branch.getTryCount()) {
+					branch.setLastClash(abox.getClash().getDepends());
 				}
-				brList.clear();
-			}
-			else {
-				// old approach
-				branches.subList( lastBranch, branches.size() ).clear();
-			}
 
-			// get the branch to try
-			Branch newBranch = branches.get( lastBranch - 1 );
+				// increment the counter
+				branch.setTryNext(branch.getTryNext()+1);
 
-			if( log.isLoggable( Level.FINE ) )
-				log.fine( "JUMP: Branch " + lastBranch );
+				log.info( "JUMP: Branch " + targetBranch );
+				if (targetBranch==117) {
+					System.out.println("JUJU");
+				}
+				// no need to restore this branch if we exhausted possibilities
+				if (branch.getTryNext() < branch.getTryCount()) {
+					// undo the changes done after this branch
+					restore(branch, abox.getClash().getDepends().time());
+				}
 
-			if( lastBranch != newBranch.getBranch() )
-				throw new InternalReasonerException( "Backtrack: Trying to backtrack to branch "
-						+ lastBranch + " but got " + newBranch.getBranch() );
+			} else if (branchVar instanceof DisjunctionBranch) {
+				DisjunctionBranch branch = (DisjunctionBranch) branchVar;
 
-			// set the last clash before restore
-			if( newBranch.getTryNext() < newBranch.getTryCount() ) {
-				newBranch.setLastClash( abox.getClash().getDepends() );
-			}
+				Time intersection = Time.intersection(branch.getTryNextTime(), clashDS.time());
 
-			// increment the counter
-			newBranch.setTryNext( newBranch.getTryNext() + 1 );
+				if ( branch.getTryNext() < branch.getTryCount() ) {
+					branch.setLastClash( abox.getClash().getDepends().partBy(intersection) );
+				}
 
-			// no need to restore this branch if we exhausted possibilities
-			if( newBranch.getTryNext() < newBranch.getTryCount() ) {
-				// undo the changes done after this branch
-				restore( newBranch );
+				branch.setTryNext(branch.getTryNext()+1);
+
+				if (branch.currentlyUseless()) {
+					if (!PelletOptions.SPECIAL_LOGS) {
+						log.info("(SROIQ) soon will restore disj Branch(" +targetBranch+"). It is currently useless -> deleting later branches "+Integer.sum(targetBranch,1) + "..." + abox.getBranches().size() +"  from ABox.");
+					} else {
+						log.info("(SROIQ) soon will restore Branch(" + targetBranch + "). Deleting later branches " + Integer.sum(targetBranch, 1) + "..." + abox.getBranches().size() + "  from ABox.");
+					}
+					 abox.stats.backjumps += (branches.size() - targetBranch);
+					branches.subList( targetBranch, branches.size() ).clear();
+					branchDeleted = true;
+				}
+
+
+				log.info( "JUMP: Branch " + targetBranch );
+				if (branch.getTryNext() < branch.getTryCount()) {
+					restore(branch, intersection);
+				}
 			}
 
 			// try the next possibility
-			branchFound = newBranch.tryNext();
+			branchFound = branchVar.tryNext();
 
 			if( !branchFound ) {
-				if( log.isLoggable( Level.FINE ) )
-					log.fine( "FAIL: Branch " + lastBranch );
+				log.info( "FAIL: Branch " + targetBranch );
+//				if (branchVar instanceof DisjunctionBranch && ((DisjunctionBranch) branchVar).isUselessBranch()) {
+//
+//					branches.subList( targetBranch-1, branches.size() ).clear();
+//				}
 			}
 		}
 
@@ -136,72 +160,61 @@ public class SROIQStrategy extends CompletionStrategy {
 
 				abox.setChanged( false );
 
-				if( log.isLoggable( Level.FINE ) ) {
-					log.fine( "Branch: " + abox.getBranch() + ", Depth: " + abox.stats.treeDepth
-							+ ", Size: " + abox.getNodes().size() + ", Mem: "
-							+ (Runtime.getRuntime().freeMemory() / 1000) + "kb" );
+				if( log.isLoggable( Level.INFO ) ) {
+					log.info("------------------------------------------------------------");
+					log.info( "Branch: " + abox.getBranch() + ", Depth: " + abox.stats.treeDepth
+							+ ", Size: " + abox.getNodes().size());
 					abox.validate();
-					printBlocked();
+//					printBlocked();
 					abox.printTree();
 				}
 
-				IndividualIterator i = (PelletOptions.USE_COMPLETION_QUEUE)
-					? abox.getCompletionQueue()
-					: abox.getIndIterator();
+				IndividualIterator i = abox.getIndIterator();
 
-				// flush the queue
-				if( PelletOptions.USE_COMPLETION_QUEUE )
-					abox.getCompletionQueue().flushQueue();
 
 				for( TableauRule tableauRule : tableauRules ) {
 					tableauRule.apply( i );
 					if( abox.isClosed() )
 						break;
 				}
-
-				// it could be the case that there was a clash and we had a
-				// deletion update that retracted it
-				// however there could have been some thing on the queue that
-				// still needed to be refired from backtracking
-				// so onle set that the abox is clash free after we have applied
-				// all the rules once
-				if( PelletOptions.USE_COMPLETION_QUEUE )
-					abox.getCompletionQueue().setClosed( abox.isClosed() );
 			}
+
 
 			if( abox.isClosed() ) {
-				if( log.isLoggable( Level.FINE ) )
-					log.fine( "Clash at Branch (" + abox.getBranch() + ") " + abox.getClash() );
+				log.info( "Clash at Branch(" + abox.getBranch() + ") " + abox.getClash() +" (SROIQ)" );
 
-				if( backtrack() ) {
+				int currentBranch =  abox.getBranch();
+				boolean backtrackSuccess = true;
+				while (abox.getClash() != null && !abox.getClash().getDepends().isEmpty() && backtrackSuccess) {
+					backtrackSuccess = backtrack();
+				}
+
+				if (backtrackSuccess) {
 					abox.setClash( null );
-
-					if( PelletOptions.USE_COMPLETION_QUEUE )
-						abox.getCompletionQueue().setClosed( false );
+					if (!branchDeleted) {
+						log.info("Returned to Branch"+currentBranch);
+						abox.setBranch(currentBranch);
+					}
+				} else {
+					abox.setComplete(true);
 				}
-				else {
-					abox.setComplete( true );
 
-					// we need to flush the queue to add the other elements
-					if( PelletOptions.USE_COMPLETION_QUEUE )
-						abox.getCompletionQueue().flushQueue();
-				}
-			}
-			else {
+			} else {
+
 				if( PelletOptions.SATURATE_TABLEAU ) {
 					Branch unexploredBranch = null;
 					for( int i = abox.getBranches().size() - 1; i >= 0; i-- ) {
 						unexploredBranch = abox.getBranches().get( i );
+//						ROBERT я изменил setTryNext в disj branch - учти тут
 						unexploredBranch.setTryNext( unexploredBranch.getTryNext() + 1 );
 						if( unexploredBranch.getTryNext() < unexploredBranch.getTryCount() ) {
-							restore( unexploredBranch );
+							restore(unexploredBranch, abox.getClash().getDepends().time());
 							System.out.println( "restoring branch " + unexploredBranch.getBranch()
 									+ " tryNext = " + unexploredBranch.getTryNext()
 									+ " tryCount = " + unexploredBranch.getTryCount() );
 							unexploredBranch.tryNext();
 							break;
-						}
-						else {
+						} else {
 							System.out.println( "removing branch " + unexploredBranch.getBranch() );
 							abox.getBranches().remove( i );
 							unexploredBranch = null;
@@ -210,9 +223,11 @@ public class SROIQStrategy extends CompletionStrategy {
 					if( unexploredBranch == null ) {
 						abox.setComplete( true );
 					}
+
+				} else {
+
+					abox.setComplete(true);
 				}
-				else
-					abox.setComplete( true );
 			}
 		}
 		

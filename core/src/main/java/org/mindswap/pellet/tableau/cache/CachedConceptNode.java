@@ -11,13 +11,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Map.Entry;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.EdgeList;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
-import org.mindswap.pellet.Role;
+import aterm.ATerm;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -45,7 +40,7 @@ public class CachedConceptNode implements CachedNode {
 	private ATermAppl						name;
 	private EdgeList						inEdges;
 	private EdgeList						outEdges;
-	private Map<ATermAppl, DependencySet>	types;
+	private Map<ATermAppl, TimeDS>	types;
 	private boolean							isIndependent;
 
 	/**
@@ -69,8 +64,8 @@ public class CachedConceptNode implements CachedNode {
 		}
 		
 		types = CollectionUtils.makeIdentityMap( node.getDepends() );
-        for( Map.Entry<ATermAppl, DependencySet> e : types.entrySet() ) {        	
-			e.setValue( e.getValue().cache() );
+        for( TimeDS timeDS : types.values() ) {
+			timeDS.cache();
 		}
 	}
 
@@ -104,14 +99,14 @@ public class CachedConceptNode implements CachedNode {
 	private void collectComplexPropertyValues(Individual subj, Role role) {
 		Set<ATermAppl> knowns = new HashSet<ATermAppl>();
 		Set<ATermAppl> unknowns = new HashSet<ATermAppl>();
-
+//РОБЕРТ ТУТ ВООБЩЕ ВРЕМЯ НЕ УЧИТЫВАЕТСЯ ((
 		subj.getABox().getObjectPropertyValues( subj.getName(), role, knowns, unknowns, false );
 
 		for( ATermAppl val : knowns ) {
-			outEdges.addEdge( new CachedOutEdge( role, val, DependencySet.INDEPENDENT ) );
+			outEdges.addEdge( new CachedOutEdge( role, val, TimeDS.INDEPENDENT() ) );
 		}
 		for( ATermAppl val : unknowns ) {
-			outEdges.addEdge( new CachedOutEdge( role, val, DependencySet.DUMMY ) );
+			outEdges.addEdge( new CachedOutEdge( role, val, TimeDS.DUMMY() ) );
 		}
 	}
 	
@@ -134,14 +129,14 @@ public class CachedConceptNode implements CachedNode {
 			
 			if( PelletOptions.CHECK_NOMINAL_EDGES ) {
 				Node neighbor = edge.getNeighbor( node );
-				Map<Node,DependencySet> mergedNodes = neighbor.getAllMerged();
-					DependencySet edgeDepends = edge.getDepends();
-					for( Entry<Node,DependencySet> entry : mergedNodes.entrySet() ) {
+				Map<Node,TimeDS> mergedNodes = neighbor.getAllMerged();
+				TimeDS edgeDepends = edge.getDepends();
+					for( Entry<Node, TimeDS> entry : mergedNodes.entrySet() ) {
 						Node mergedNode = entry.getKey();
 						if( mergedNode.isRootNominal() && !mergedNode.equals( neighbor ) ) {
 							Role r = edge.getRole();
 							ATermAppl n = mergedNode.getName();
-							DependencySet ds = edgeDepends.union( entry.getValue(), false ).cache();
+							TimeDS ds = edgeDepends.union( entry.getValue(), false ).cache();
 							Edge e = out 
 								? new CachedOutEdge( r, n, ds ) 
 								: new CachedInEdge( r, n, ds );
@@ -178,8 +173,12 @@ public class CachedConceptNode implements CachedNode {
 	/**
 	 * {@inheritDoc}
 	 */
-	public Map<ATermAppl, DependencySet> getDepends() {
+	public Map<ATermAppl, TimeDS> getDepends() {
 		return types;
+	}
+
+	public TimeDS getTimeDS(ATerm c) {
+		return types.get(c);
 	}
 
 	/**

@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -26,6 +27,7 @@ import org.mindswap.pellet.KnowledgeBase;
 import org.mindswap.pellet.PelletOptions;
 import org.mindswap.pellet.tbox.TBox;
 import org.mindswap.pellet.utils.ATermUtils;
+import org.mindswap.pellet.utils.Comparators;
 import org.mindswap.pellet.utils.iterator.MultiIterator;
 
 import aterm.AFun;
@@ -512,6 +514,10 @@ public class TBoxExpImpl implements TBox {
 		Tg.absorb();
 		Tg.internalize();
 		Tu.normalize();
+		for (ATermAppl c : classes) {
+			Tu.unfold(c).sort(Comparators.stringComparator);
+		}
+		Tg.getUC().sort(Comparators.stringComparator);
 	}
 
 	public Iterator<Unfolding> unfold(ATermAppl c) {

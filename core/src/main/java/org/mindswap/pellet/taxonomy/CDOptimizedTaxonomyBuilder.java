@@ -25,6 +25,7 @@ import org.mindswap.pellet.Individual;
 import org.mindswap.pellet.KnowledgeBase;
 import org.mindswap.pellet.PelletOptions;
 import org.mindswap.pellet.Role;
+import org.mindswap.pellet.Time;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tbox.TBox;
 import org.mindswap.pellet.tbox.impl.Unfolding;
@@ -1277,68 +1278,90 @@ public class CDOptimizedTaxonomyBuilder implements TaxonomyBuilder {
 	private void realize(Individual x) {
 		Map<ATermAppl, Boolean> marked = new HashMap<ATermAppl, Boolean>();
 
-		List<ATermAppl> obviousTypes = new ArrayList<ATermAppl>();
-		List<ATermAppl> obviousNonTypes = new ArrayList<ATermAppl>();
+		Map<ATermAppl, Time> obviousTypes = new HashMap<>();
+		Map<ATermAppl, Time> obviousNonTypes = new HashMap<>();
 
 		kb.getABox().getObviousTypes( x.getName(), obviousTypes, obviousNonTypes );
 
-		for( ATermAppl c : obviousTypes ) {
+		for( ATermAppl c : new HashSet<>(obviousTypes.keySet())) {
 			// since nominals can be returned by getObviousTypes
 			// we need the following check
 			if( !taxonomy.contains( c ) ) {
                 continue;
             }
 
+			Time time = obviousTypes.get(c);
+			taxonomy.getAllEquivalents(c).forEach(other -> obviousTypes.put(other, time));
+			taxonomy.getFlattenedSupers( c, true ).forEach(other -> obviousTypes.put(other, time));
+
 			mark( taxonomy.getAllEquivalents( c ), marked, Boolean.TRUE );
-			mark( taxonomy.getFlattenedSupers( c, /* direct = */true ), marked, Boolean.TRUE );
+			mark( taxonomy.getFlattenedSupers( c, true ), marked, Boolean.TRUE );
 
 			// FIXME: markToldDisjoints operates on a map key'd with
 			// TaxonomyNodes, not ATermAppls
 			// markToldDisjoints( c, false );
 		}
 
-		for( ATermAppl c : obviousNonTypes ) {
+		for( ATermAppl c : new HashSet<>(obviousNonTypes.keySet())) {
+
+			Time time = obviousTypes.get(c);
+			taxonomy.getAllEquivalents(c).forEach(other -> obviousNonTypes.put(other, time));
+			taxonomy.getFlattenedSupers( c, true ).forEach(other -> obviousNonTypes.put(other, time));
+
 			mark( taxonomy.getAllEquivalents( c ), marked, Boolean.FALSE );
-			mark( taxonomy.getFlattenedSubs( c, /* direct = */true ), marked, Boolean.FALSE );
+			mark( taxonomy.getFlattenedSupers( c, true ), marked, Boolean.FALSE );
 		}
 
-		realize( x.getName(), ATermUtils.TOP, marked );
+
+		realize( x.getName(), ATermUtils.TOP, marked, obviousTypes );
 	}
 
-	private boolean realize(ATermAppl n, ATermAppl c, Map<ATermAppl, Boolean> marked) {
+	private boolean realize(ATermAppl n, ATermAppl c, Map<ATermAppl, Boolean> marked, Map<ATermAppl, Time> timeMap) {
 		boolean realized = false;
 
 		if( c.equals( ATermUtils.BOTTOM ) ) {
 	        return false;
         }
 
+		Time time = null;
 		boolean isType;
 		if( marked.containsKey( c ) ) {
 			isType = marked.get( c ).booleanValue();
+			if (isType) {
+				time = timeMap.get(c);
+			}
 		}
 		else {
-			long time = 0, count = 0;
+			long timeLog = 0, count = 0;
 			if( log.isLoggable( Level.FINER ) ) {
-				time = System.currentTimeMillis();
+				timeLog = System.currentTimeMillis();
 				count = kb.getABox().stats.consistencyCount;
 				log.finer( "Type checking for [" + format( n ) + ", " + format( c ) + "]..." );
 			}
 
 			Timer t = kb.timers.startTimer( "classifyType" );
 			isType = kb.isType( n, c );
+			if (isType) {
+//				РОБЕРТ СДЕЛАТЬ ДРУГУЮ ПЕРЕДАЧУ ЭТОГО ПАРАМТЕРА
+//				time = kb.getABox().getIsTypeTime();
+			}
 			t.stop();
 			marked.put( c, isType
 				? Boolean.TRUE
 				: Boolean.FALSE );
 
+			if (isType) {
+				timeMap.put(c, time);
+			}
+
 			if( log.isLoggable( Level.FINER ) ) {
 				String sign = (kb.getABox().stats.consistencyCount > count)
 					? "+"
 					: "-";
-				time = System.currentTimeMillis() - time;
+				timeLog = System.currentTimeMillis() - timeLog;
 				log.finer( "done (" + (isType
 					? "+"
-					: "-") + ") (" + sign + time + "ms)" );
+					: "-") + ") (" + sign + timeLog + "ms)" );
 			}
 		}
 
@@ -1347,7 +1370,7 @@ public class CDOptimizedTaxonomyBuilder implements TaxonomyBuilder {
 
 			for( TaxonomyNode<ATermAppl> sub : node.getSubs() ) {
 				ATermAppl d = sub.getName();
-				realized = realize( n, d, marked ) || realized;
+				realized = realize( n, d, marked, timeMap ) || realized;
 			}
 
 			// this concept is the most specific concept x belongs to
@@ -1361,6 +1384,7 @@ public class CDOptimizedTaxonomyBuilder implements TaxonomyBuilder {
 					node.putDatum( TaxonomyUtils.INSTANCES_KEY, instances );
 				}
 				instances.add( n );
+				node.putTime(n, time);
 				realized = true;
 			}
 		}

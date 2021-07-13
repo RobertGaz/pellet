@@ -13,17 +13,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.EdgeList;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Literal;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -49,7 +41,7 @@ import com.clarkparsia.pellet.datatypes.exceptions.UnrecognizedDatatypeException
  */
 public class SomeValuesRule extends AbstractTableauRule {
 	public SomeValuesRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.EXISTENTIAL, BlockingType.COMPLETE );
+		super( strategy, BlockingType.COMPLETE );
 	}
 	
     public void apply( Individual x ) {
@@ -76,11 +68,12 @@ public class SomeValuesRule extends AbstractTableauRule {
         ATermAppl s = (ATermAppl) a.getArgument( 0 );
         ATermAppl c = (ATermAppl) a.getArgument( 1 );
 
-        DependencySet ds = x.getDepends( sv );
+        TimeDS timeDS = x.getDepends( sv );
 
+        timeDS = timeDS.copy();
         
-        if(!PelletOptions.MAINTAIN_COMPLETION_QUEUE && ds == null)
-			return;
+        if (timeDS.isEmpty())
+            throw new RuntimeException("strange");
         
         c = ATermUtils.negate( c );
         
@@ -95,13 +88,12 @@ public class SomeValuesRule extends AbstractTableauRule {
         		}
         	}
         	
-        	Individual y = strategy.createFreshIndividual( x, ds );
-        	strategy.addType( y, c, ds );
+        	Individual y = strategy.createFreshIndividual( x, timeDS );
+        	strategy.addType( y, c, timeDS );
         	return;
         }
         
         Role role = strategy.getABox().getRole( s );
-
 
         // Is there a r-neighbor that satisfies the someValuesFrom restriction
         boolean neighborFound = false;
@@ -123,15 +115,13 @@ public class SomeValuesRule extends AbstractTableauRule {
         for( Iterator<Edge> i = edges.iterator(); i.hasNext(); ) {
             edge = i.next();
 
-            y = edge.getNeighbor( x );            
-            
-            if( PelletOptions.USE_COMPLETION_QUEUE && y.isPruned() ){
-            		y = null;
-            		continue;
-            }            	 
-            
+            y = edge.getNeighbor( x );
+
             if( y.hasType( c ) ) {
-            	neighborFound = neighborSafe || y.isLiteral() || !strategy.getBlocking().isBlocked( (Individual) y );
+                if (neighborSafe || y.isLiteral() || !strategy.getBlocking().isBlocked( (Individual) y )) {
+                    timeDS.subtract(Time.intersection(edge.getDepends().time(), y.getDepends(c).time()));
+                }
+                neighborFound = timeDS.isEmpty();
                 if( neighborFound ) {
                     break;
                 }
@@ -153,8 +143,8 @@ public class SomeValuesRule extends AbstractTableauRule {
 				ATermAppl canonical;
 				if( input.getArgument( ATermUtils.LIT_URI_INDEX ).equals( ATermUtils.NO_DATATYPE ) ) {
 					canonical = input;
-				}
-				else {
+
+				} else {
 					try {
 						canonical = strategy.getABox().getDatatypeReasoner().getCanonicalRepresentation( input );
 					} catch( InvalidLiteralException e ) {
@@ -168,22 +158,21 @@ public class SomeValuesRule extends AbstractTableauRule {
 					}
 				}
 				literal = strategy.getABox().addLiteral( canonical );
-			}
-            else {
+
+			} else {
                 if( !role.isFunctional() || literal == null ) {
-                    literal = strategy.getABox().addLiteral( ds );
+                    literal = strategy.getABox().addLiteral( timeDS );
                 }
                 else {
-                	ds = ds.union( role.getExplainFunctional(), strategy.getABox().doExplanation()  );
-                	ds = ds.union( edge.getDepends(), strategy.getABox().doExplanation()  );
+                    timeDS = timeDS.union( edge.getDepends(), strategy.getABox().doExplanation() );
+                    timeDS.addExplain(role.getExplainFunctional(), strategy.getABox().doExplanation());
                 }
-                strategy.addType( literal, c, ds );
+                strategy.addType( literal, c, timeDS );
             }
             
-            if( log.isLoggable( Level.FINE ) )
-                log.fine( "SOME: " + x + " -> " + s + " -> " + literal + " : " + ATermUtils.toString( c ) + " - " + ds );
+            log.info( "SOME  " + x + " -> " + s + " -> " + literal + " : " + ATermUtils.toString( c ) + (!PelletOptions.SPECIAL_LOGS ? " ON " + timeDS.time() : "") );
             
-            strategy. addEdge( x, role, literal, ds );
+            strategy.addEdge( x, role, literal, timeDS );
         }
         // If it is an object property
         else {
@@ -193,12 +182,11 @@ public class SomeValuesRule extends AbstractTableauRule {
                 ATermAppl value = (ATermAppl) c.getArgument( 0 );
                 y = strategy.getABox().getIndividual( value );
 
-                if( log.isLoggable( Level.FINE ) )
-                    log.fine( "VAL : " + x + " -> " + ATermUtils.toString( s ) + " -> " + y + " - " + ds );
+                log.info( "VAL   " + x + " -> " + ATermUtils.toString( s ) + " -> " + y + (!PelletOptions.SPECIAL_LOGS ? " ON " + timeDS.time() : "") );
 
                 if( y == null ) {
                     if( ATermUtils.isAnonNominal( value ) ) {
-                        y = strategy.getABox().addIndividual( value, ds );
+                        y = strategy.getABox().addIndividual( value, timeDS );
                     }
                     else if( ATermUtils.isLiteral( value ) )
                         throw new InternalReasonerException( "Object Property " + role
@@ -210,21 +198,21 @@ public class SomeValuesRule extends AbstractTableauRule {
                 }
 
                 if( y.isMerged() ) {
-                    ds = ds.union( y.getMergeDependency( true ), strategy.getABox().doExplanation() );
+                    timeDS = timeDS.union( y.getMergeDependency( true ), strategy.getABox().doExplanation() );
 
                     y = y.getSame();
                 }
 
-                strategy.addEdge( x, role, y, ds );
-            }
-            else {
+                strategy.addEdge( x, role, y, timeDS );
+
+            } else {
                 boolean useExistingNode = false;
                 boolean useExistingRole = false;
-                DependencySet maxCardDS = role.isFunctional()
-					? role.getExplainFunctional()
+                TimeDS maxCardDS = role.isFunctional()
+					? new TimeDS(role.getExplainFunctional())
 					: x.hasMax1( role );
-                if( maxCardDS != null ) {
-                    ds = ds.union( maxCardDS, strategy.getABox().doExplanation() );
+                if( maxCardDS != null && !maxCardDS.isEmpty() ) {
+                    timeDS = timeDS.union( maxCardDS, strategy.getABox().doExplanation() );
 
                     // if there is an r-neighbor and we can have at most one r then
                     // we should reuse that node and edge. there is no way that neighbor
@@ -232,9 +220,9 @@ public class SomeValuesRule extends AbstractTableauRule {
                     // a nominal successor which is not possible if there is a cardinality
                     // restriction on the property)
                     if( edge != null ) {
-                        useExistingRole = useExistingNode = true;                       
-                    }
-                    else {
+                        useExistingNode = true;
+                    } else {
+
                         // this is the tricky part. we need some merges to happen
                         // under following conditions:
                         // 1) if r is functional and there is a p-neighbor where
@@ -247,8 +235,7 @@ public class SomeValuesRule extends AbstractTableauRule {
                         // means we need to reuse that p-neighbor
                         // In either case if there are more than one such value we also
                         // need to merge them together
-                        Set<Role> fs = role.isFunctional() ? role.getFunctionalSupers() : role
-                            .getSubRoles();
+                        Set<Role> fs = role.isFunctional() ? role.getFunctionalSupers() : role.getSubRoles();
                         
                         for( Iterator<Role> it = fs.iterator(); it.hasNext(); ) {
                             Role f = it.next();
@@ -265,9 +252,11 @@ public class SomeValuesRule extends AbstractTableauRule {
                                 	}
                                     Edge otherEdge = edges.edgeAt( 0 );
                                     Node otherNode = otherEdge.getNeighbor( x );
-                                    DependencySet d = ds.union( edge.getDepends(), strategy.getABox().doExplanation() ).union(
-                                        otherEdge.getDepends(), strategy.getABox().doExplanation() ).union(fds, strategy.getABox().doExplanation());
-                                    strategy.mergeTo( y, otherNode, d );
+                                    TimeDS mergeDS = timeDS.union(edge.getDepends(), strategy.getABox().doExplanation());
+                                    mergeDS = mergeDS.union(otherEdge.getDepends(), strategy.getABox().doExplanation());
+                                    mergeDS.addExplain(fds, strategy.getABox().doExplanation());
+                                    //тут мб и не надо все время нахдить - ведь речь о мерже
+                                    strategy.mergeTo( y, otherNode, mergeDS );
                                 }
                                 else {
                                     useExistingNode = true;
@@ -282,23 +271,21 @@ public class SomeValuesRule extends AbstractTableauRule {
                 }
 
                 if( useExistingNode ) {
-                    ds = ds.union( edge.getDepends(), strategy.getABox().doExplanation() );
-                }
-                else {
-                    y = strategy.createFreshIndividual( x, ds );
+                    timeDS = timeDS.union( edge.getDepends(), strategy.getABox().doExplanation() );
+                } else {
+                    y = strategy.createFreshIndividual( x, timeDS );
                 }
 
-                if( log.isLoggable( Level.FINE ) )
-                    log.fine( "SOME: " + x + " -> " + role + " -> " + y + " : " + ATermUtils.toString( c ) 
-                        + (useExistingNode ? "" : " (*)") + " - " + ds );
+                log.info( "SOME  " + x + " -> " + role + " -> " + y + " : " + ATermUtils.toString( c )
+                        + (useExistingNode ? "" : " (*)") + (!PelletOptions.SPECIAL_LOGS ? " ON " + timeDS.time() : "") );
 
-                strategy.addType( y, c, ds );
+                strategy.addType( y, c, timeDS );
 
                 if( !useExistingRole ) {
                 	if (x.isBlockable() && y.isConceptRoot())
-                		strategy.addEdge( (Individual) y, role.getInverse(), x, ds );
+                		strategy.addEdge( (Individual) y, role.getInverse(), x, timeDS );
                 	else
-                		strategy.addEdge( x, role, y, ds );
+                		strategy.addEdge( x, role, y, timeDS );
                 }
             }
         }   

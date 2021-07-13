@@ -17,7 +17,6 @@ import org.mindswap.pellet.PelletOptions;
 import org.mindswap.pellet.Role;
 import org.mindswap.pellet.tableau.branch.ChooseBranch;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -41,7 +40,7 @@ import aterm.ATermAppl;
 public class ChooseRule extends AbstractTableauRule {
 
 	public ChooseRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.CHOOSE, BlockingType.INDIRECT );
+		super( strategy, BlockingType.INDIRECT );
 	}
 
     public void apply( Individual x ) {
@@ -66,8 +65,8 @@ public class ChooseRule extends AbstractTableauRule {
         if( ATermUtils.isTop( c ) )
             return;
         
-        if(!PelletOptions.MAINTAIN_COMPLETION_QUEUE && x.getDepends(maxCard) == null)
-    			return;
+        if(x.getDepends(maxCard).isEmpty())
+            throw new RuntimeException("strange");
 
         EdgeList edges = x.getRNeighborEdges( r );
         for( Iterator<Edge> i = edges.iterator(); i.hasNext(); ) {

@@ -6,11 +6,7 @@
 
 package org.mindswap.pellet.tableau.cache;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 
 import aterm.ATermAppl;
 
@@ -37,20 +33,19 @@ import aterm.ATermAppl;
 public abstract class CachedEdge implements Edge {
 	protected ATermAppl		neighbor;
 	private Role			role;
+	private TimeDS depends;
 
-	private DependencySet	depends;
-
-	public CachedEdge(Role role, ATermAppl neighbor, DependencySet ds) {
+	public CachedEdge(Role role, ATermAppl neighbor, TimeDS timeDS) {
 		this.role = role;
 		this.neighbor = neighbor;
-		this.depends = ds.cache();
+		this.depends = timeDS;
+		depends.cache();
 	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public DependencySet getDepends() {
+	public TimeDS getDepends()  {
 		return depends;
+	}
+	public Time getTime() {
+		return depends.time();
 	}
 
 	/**
@@ -93,13 +88,6 @@ public abstract class CachedEdge implements Edge {
 	 */
 	public ATermAppl getToName() {
 		throw new UnsupportedOperationException();
-	}	
-
-	/**
-	 * {@inheritDoc}
-	 */	
-	public void setDepends(DependencySet ds) {
-		depends = ds;
 	}
 
 	public String toString() {

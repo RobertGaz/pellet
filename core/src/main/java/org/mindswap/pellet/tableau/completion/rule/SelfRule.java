@@ -14,7 +14,6 @@ import org.mindswap.pellet.Node;
 import org.mindswap.pellet.PelletOptions;
 import org.mindswap.pellet.Role;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -38,7 +37,7 @@ import aterm.ATermAppl;
 public class SelfRule extends AbstractTableauRule {
 
 	public SelfRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.ATOM, BlockingType.NONE );
+		super( strategy, BlockingType.NONE );
 	}
 
     public final void apply( Individual node ) {
@@ -47,8 +46,8 @@ public class SelfRule extends AbstractTableauRule {
         for( int j = 0; j < size; j++ ) {
             ATermAppl c = types.get( j );
 
-            if(!PelletOptions.MAINTAIN_COMPLETION_QUEUE && node.getDepends(c) == null)
-				continue;
+            if(node.getDepends(c).isEmpty())
+                throw new RuntimeException("strange");
 
             
             if( ATermUtils.isSelf( c ) ) {

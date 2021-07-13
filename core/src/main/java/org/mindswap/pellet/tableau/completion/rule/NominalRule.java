@@ -9,16 +9,12 @@
 package org.mindswap.pellet.tableau.completion.rule;
 
 import java.util.List;
-import java.util.logging.Level;
-
 import org.mindswap.pellet.Clash;
-import org.mindswap.pellet.DependencySet;
 import org.mindswap.pellet.Individual;
 import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
+import org.mindswap.pellet.TimeDS;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -42,32 +38,30 @@ import aterm.ATermAppl;
 public class NominalRule extends AbstractTableauRule {
 
 	public NominalRule(CompletionStrategy strategy) {
-		super( strategy, NodeSelector.NOMINAL, BlockingType.NONE );
+		super( strategy, BlockingType.NONE );
 	}
 
 	public void apply(Individual y) {
 		List<ATermAppl> types = y.getTypes( Node.NOM );
-		int size = types.size();
-		for( int j = 0; j < size; j++ ) {
-			ATermAppl nc = types.get( j );
-			DependencySet ds = y.getDepends( nc );
+		for (ATermAppl nc : types) {
+			TimeDS timeDS = y.getDepends(nc);
 
-			if( !PelletOptions.MAINTAIN_COMPLETION_QUEUE && ds == null )
+			if (timeDS == null || timeDS.isEmpty())
 				continue;
 
-			applyNominalRule( y, nc, ds );
+			applyNominalRule(y, nc, timeDS);
 
-			if( strategy.getABox().isClosed() )
+			if (strategy.getABox().isClosed())
 				return;
-			
-			if( y.isMerged() ) {
-				apply( y.getSame() );
+
+			if (y.isMerged()) {
+				apply(y.getSame());
 				return;
 			}
 		}
 	}
 
-	void applyNominalRule(Individual y, ATermAppl nc, DependencySet ds) {
+	void applyNominalRule(Individual y, ATermAppl nc, TimeDS timeDS) {
 		strategy.getABox().copyOnWrite();
 
 		ATermAppl nominal = (ATermAppl) nc.getArgument( 0 );
@@ -75,7 +69,7 @@ public class NominalRule extends AbstractTableauRule {
 		Individual z = strategy.getABox().getIndividual( nominal );
 		if( z == null ) {
 			if( ATermUtils.isAnonNominal( nominal ) ) {
-				z = strategy.getABox().addIndividual( nominal, ds );
+				z = strategy.getABox().addIndividual( nominal, timeDS );
 			}
 			else
 				throw new InternalReasonerException( "Nominal " + nominal + " not found in KB!" );
@@ -89,7 +83,7 @@ public class NominalRule extends AbstractTableauRule {
 		// value(x) so here we find the actual representative node
 		// by calling getSame()
 		if( z.isMerged() ) {
-			ds = ds.union( z.getMergeDependency( true ), strategy.getABox().doExplanation() );
+			timeDS = timeDS.union( z.getMergeDependency( true ), strategy.getABox().doExplanation() );
 
 			z = z.getSame();
 		}
@@ -98,17 +92,16 @@ public class NominalRule extends AbstractTableauRule {
 			return;
 
 		if( y.isDifferent( z ) ) {
-			ds = ds.union( y.getDifferenceDependency( z ), strategy.getABox().doExplanation() );
+			timeDS.unite( y.getDifferenceDependency( z ).ds(), strategy.getABox().doExplanation() );
 			if( strategy.getABox().doExplanation() )
-				strategy.getABox().setClash( Clash.nominal( y, ds, z.getName() ) );
+				strategy.getABox().setClash( Clash.nominal( y, timeDS, z.getName() ) );
 			else
-				strategy.getABox().setClash( Clash.nominal( y, ds ) );
+				strategy.getABox().setClash( Clash.nominal( y, timeDS ) );
 			return;
 		}
 
-		if( log.isLoggable( Level.FINE ) )
-			log.fine( "NOM:  " + y + " -> " + z );
+		log.info( "NOM   " + y + " -> " + z );
 
-		strategy.mergeTo( y, z, ds );
+		strategy.mergeTo( y, z, timeDS );
 	}
 }

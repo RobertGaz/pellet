@@ -14,12 +14,7 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Edge;
-import org.mindswap.pellet.EdgeList;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.KnowledgeBase;
-import org.mindswap.pellet.Role;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.exceptions.InternalReasonerException;
 import org.mindswap.pellet.tbox.impl.Unfolding;
 import org.mindswap.pellet.utils.ATermUtils;
@@ -134,13 +129,13 @@ public abstract class AbstractConceptCache implements ConceptCache {
 			? 0
 			: 1;
 		int otherRoot = 1 - root;
-		for( Entry<ATermAppl, DependencySet> entry : roots[root].getDepends().entrySet() ) {
+		for( Entry<ATermAppl, TimeDS> entry : roots[root].getDepends().entrySet() ) {
 			ATermAppl c = entry.getKey();
 			ATermAppl notC = ATermUtils.negate( c );
 
-			DependencySet ds2 = roots[otherRoot].getDepends().get( notC );
+			TimeDS ds2 = roots[otherRoot].getDepends().get( notC );
 			if( ds2 != null ) {
-				DependencySet ds1 = entry.getValue();
+				TimeDS ds1 = entry.getValue();
 				boolean allIndependent = isIndependent && ds1.isIndependent() && ds2.isIndependent();
 				if( allIndependent ) {
 					if( log.isLoggable( Level.FINE ) )
@@ -207,7 +202,7 @@ public abstract class AbstractConceptCache implements ConceptCache {
 		if( bothNamedIndividuals ) {
 			Individual ind1 = (Individual) root1;
 			Individual ind2 = (Individual) root2;
-			DependencySet ds = ind1.getDifferenceDependency( ind2 );
+			TimeDS ds = ind1.getDifferenceDependency( ind2 );
 			if( ds != null ) {
 				return ds.isIndependent()
 					? Bool.FALSE
@@ -394,7 +389,7 @@ public abstract class AbstractConceptCache implements ConceptCache {
 
 				EdgeList otherEdges = otherRoot.getRNeighborEdges( supRole );
 				for( Edge otherEdge : otherEdges ) {
-					DependencySet ds = edge.getTo().getDifferenceDependency( otherEdge.getNeighbor( otherRoot ) );
+					TimeDS ds = edge.getTo().getDifferenceDependency( otherEdge.getNeighbor( otherRoot ) );
 					if( log.isLoggable( Level.FINE ) )
 						log.fine( root + " and " + otherRoot + " has " + supRole + " " + edge + " " + otherEdge );
 					if( ds != null && ds.isIndependent() )
@@ -416,7 +411,7 @@ public abstract class AbstractConceptCache implements ConceptCache {
 
 				EdgeList otherEdges = otherRoot.getRNeighborEdges( supRole );
 				for( Edge otherEdge : otherEdges ) {
-					DependencySet ds = edge.getTo().getDifferenceDependency( otherEdge.getNeighbor( otherRoot ) );
+					TimeDS ds = edge.getTo().getDifferenceDependency( otherEdge.getNeighbor( otherRoot ) );
 					if( log.isLoggable( Level.FINE ) )
 						log.fine( root + " and " + otherRoot + " has " + supRole + " " + edge + " " + otherEdge );
 					if( ds != null && ds.isIndependent() )
@@ -502,7 +497,7 @@ public abstract class AbstractConceptCache implements ConceptCache {
 			Role role = checkInverses
 				? edge.getRole().getInverse()
 				: edge.getRole();
-			DependencySet ds = edge.getDepends();
+			TimeDS ds = edge.getDepends();
 
 			if( !ds.isIndependent() )
 				continue;

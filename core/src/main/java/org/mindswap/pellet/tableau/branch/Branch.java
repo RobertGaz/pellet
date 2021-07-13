@@ -30,13 +30,13 @@
 
 package org.mindswap.pellet.tableau.branch;
 
+import java.util.List;
+import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.Clash;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
+import aterm.ATermAppl;
+import org.mindswap.pellet.*;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
 
 /**
@@ -64,38 +64,34 @@ public abstract class Branch {
 	protected int tryCount;
 	protected int tryNext;
 	
-	private DependencySet termDepends;
-    private DependencySet prevDS;
+	private TimeDS termDepends;
+    private TimeDS prevDS;
 	
 	// store things that can be changed after this branch
     protected int anonCount;
 	protected int nodeCount;
 	
-	Branch(ABox abox, CompletionStrategy strategy, DependencySet ds, int n) {
+	Branch(ABox abox, CompletionStrategy strategy, TimeDS timeDS, int n) {
 		this.abox = abox;
 		this.setStrategy( strategy );
 		
-		setTermDepends( ds );
+		setTermDepends( timeDS );
 		setTryCount( n );
-		prevDS = DependencySet.EMPTY;
-		setTryNext( 0 );			
+		prevDS = TimeDS.EMPTY();
+		tryNext = 0;
 		
 		setBranch( abox.getBranch() );
 		setAnonCount( abox.getAnonCount() );
 		setNodeCount( abox.size() );
 	}
     
-    public void setLastClash( DependencySet ds ) {
-    		if(getTryNext()>=0){
-    			prevDS = prevDS.union( ds, abox.doExplanation() );
-    			if(PelletOptions.USE_INCREMENTAL_DELETION){
-	    			//CHW - added for incremental deletions support THIS SHOULD BE MOVED TO SUPER
-	    			abox.getKB().getDependencyIndex().addCloseBranchDependency(this, ds);		
-    			}
-    		}
+    public void setLastClash( TimeDS timeDS ) {
+		if(getTryNext()>=0){
+			prevDS = TimeDS.union(prevDS, timeDS, abox.doExplanation() );
+		}
     }
 	
-    public DependencySet getCombinedClash() {
+    public TimeDS getCombinedClash() {
         return prevDS;
     }
     
@@ -119,8 +115,7 @@ public abstract class Branch {
 		// there is a clash so there is no point in trying this
 		// branch again. remove this branch from clash dependency
 		if( abox.isClosed() ) {
-			if( !PelletOptions.USE_INCREMENTAL_DELETION )
-				abox.getClash().getDepends().remove( getBranch() );
+			abox.getClash().getDepends().remove( getBranch() );
 		}
 		
 		return !abox.isClosed();
@@ -137,14 +132,7 @@ public abstract class Branch {
 		return "Branch on node " + getNode() + "  Branch number: "+ getBranch() + " " + getTryNext() + "(" + getTryCount() + ")";
 	}
 	
-	
-	/**
-	 * Added for to re-open closed branches.
-	 * This is needed for incremental reasoning through deletions
-	 * 
-	 * @param index The shift index
-	 */
-	public abstract void shiftTryNext(int index);
+
 
 	/**
 	 * @param nodeCount the nodeCount to set
@@ -209,14 +197,14 @@ public abstract class Branch {
 	/**
 	 * @param termDepends the termDepends to set
 	 */
-	public void setTermDepends(DependencySet termDepends) {
+	public void setTermDepends(TimeDS termDepends) {
 		this.termDepends = termDepends;
 	}
 
 	/**
 	 * @return the termDepends
 	 */
-	public DependencySet getTermDepends() {
+	public TimeDS getTermDepends() {
 		return termDepends;
 	}
 

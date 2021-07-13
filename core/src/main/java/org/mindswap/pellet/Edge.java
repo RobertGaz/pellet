@@ -3,7 +3,7 @@
 //
 // Please see LICENSE.txt for full license terms, including the availability of proprietary exceptions.
 // Questions, comments, or requests for clarification: licensing@clarkparsia.com
- 
+
 package org.mindswap.pellet;
 
 import aterm.ATermAppl;
@@ -22,7 +22,7 @@ import aterm.ATermAppl;
 public interface Edge {
 	/**
 	 * Given a node upon which this edge is incident, the opposite incident node is returned.
-	 * 
+	 *
 	 * @param node a node upon which this edge is incident
 	 * @return the other node this edge is incident upon
 	 */
@@ -31,15 +31,14 @@ public interface Edge {
 	/**
 	 * @return Returns the depends.
 	 */
-	public abstract DependencySet getDepends();
-	
-	public abstract void setDepends(DependencySet ds);
 
+	public abstract TimeDS getDepends();
+	public abstract Time getTime();
 	/**
 	 * @return Returns the source of this edge
 	 */
 	public abstract Individual getFrom();
-	
+
 	/**
 	 * @return Returns the name of the source node
 	 */
@@ -59,4 +58,7 @@ public interface Edge {
 	 * @return Returns the name of the target node
 	 */
 	public abstract ATermAppl getToName();
+
+
+
 }

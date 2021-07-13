@@ -42,14 +42,14 @@ import aterm.ATermAppl;
 public class NodeMerge {
 	private ATermAppl source;
 	private ATermAppl target;
-	private DependencySet ds;
+	private TimeDS ds;
 	
 	public NodeMerge(Node y, Node z) {
 		this.setSource( y.getName() );
 		this.setTarget( z.getName() );
 	}
 	
-	public NodeMerge(Node y, Node z, DependencySet ds) {
+	public NodeMerge(Node y, Node z, TimeDS ds) {
 		this.setSource( y.getName() );
 		this.setTarget( z.getName() );		
 		this.ds = ds;
@@ -95,7 +95,7 @@ public class NodeMerge {
 	/**
 	 * @return the dependecy set
 	 */
-	public DependencySet getDepends() {
+	public TimeDS getDepends() {
 		return ds;
 	}
 }

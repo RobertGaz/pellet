@@ -8,10 +8,8 @@ package org.mindswap.pellet.tableau.cache;
 
 import java.util.Map;
 
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.EdgeList;
-import org.mindswap.pellet.Individual;
-import org.mindswap.pellet.Role;
+import aterm.ATerm;
+import org.mindswap.pellet.*;
 
 import aterm.ATermAppl;
 
@@ -65,7 +63,7 @@ public interface CachedNode {
 	 * 
 	 * @return a map from concepts to dependency sets
 	 */
-	public Map<ATermAppl, DependencySet> getDepends();
+	public Map<ATermAppl, TimeDS> getDepends();
 
 	/**
 	 * Returns the outgoing edges of this node.

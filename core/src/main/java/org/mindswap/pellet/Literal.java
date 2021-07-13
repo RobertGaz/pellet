@@ -37,7 +37,6 @@ package org.mindswap.pellet;
 import static java.lang.String.format;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.Map.Entry;
@@ -69,7 +68,7 @@ public class Literal extends Node {
 	
 	private boolean clashed = false;
 
-	public Literal(ATermAppl name, ATermAppl term, ABox abox, DependencySet ds) {
+	public Literal(ATermAppl name, ATermAppl term, ABox abox, TimeDS timeDS) {
 
 		super( name, abox );
 
@@ -99,7 +98,7 @@ public class Literal extends Node {
 					throw new InternalReasonerException( msg, e );
 				}
 				if( value == null ) {
-					depends.put( name, ds );
+					depends.put( name, timeDS);
 				}
 			}
 
@@ -119,8 +118,13 @@ public class Literal extends Node {
 	}
 
 	@Override
-    public DependencySet getNodeDepends() {
+    public TimeDS getNodeDepends() {
 		return getDepends( ATermUtils.TOP_LIT );
+	}
+
+	@Override
+	public void setNodeDepends(TimeDS timeDS) {
+		depends.put(ATermUtils.TOP_LIT, timeDS);
 	}
 
 	@Override
@@ -221,12 +225,12 @@ public class Literal extends Node {
 	}
 
 	@Override
-    public DependencySet getDifferenceDependency(Node node) {
-		DependencySet ds = null;
+    public TimeDS getDifferenceDependency(Node node) {
+		TimeDS ds = null;
 		if( isDifferent( node ) ) {
 			ds = differents.get( node );
 			if( ds == null ) {
-	            ds = DependencySet.INDEPENDENT;
+	            ds = TimeDS.INDEPENDENT();
             }
 		}
 
@@ -234,7 +238,12 @@ public class Literal extends Node {
 	}
 
 	@Override
-    public void addType(ATermAppl c, DependencySet d) {
+	public TimeDS addType(ATermAppl c, TimeDS d) {
+		TimeDS added = d.copy();
+		addTypeInternal(c, added);
+		return added;
+	}
+    private void addTypeInternal(ATermAppl c, TimeDS d) {
 		if( hasType( c ) ) {
 	        return;
         }
@@ -261,17 +270,18 @@ public class Literal extends Node {
 		checkClash();
 	}
 
-	public void addAllTypes(Map<ATermAppl, DependencySet> types, DependencySet ds) {
-		for( Entry<ATermAppl, DependencySet> entry : types.entrySet() ) {
+	public void addAllTypes(Map<ATermAppl, TimeDS> types, TimeDS ds) {
+		for( Entry<ATermAppl, TimeDS> entry : types.entrySet() ) {
 			ATermAppl c = entry.getKey();
 
 			if( hasType( c ) ) {
 	            continue;
             }
 
-			DependencySet depends = entry.getValue();
+			TimeDS depends = entry.getValue();
+			TimeDS timeDS = TimeDS.intersection(depends, ds, abox.doExplanation());
 
-			super.addType( c, depends.union( ds, abox.doExplanation() ) );
+			super.addType( c, timeDS );
 		}
 
 		checkClash();
@@ -350,14 +360,14 @@ public class Literal extends Node {
 					final ATermAppl dt[] = primitives
 							.toArray( new ATermAppl[primitives.size() - 1] );
 
-					DependencySet ds = DependencySet.EMPTY;
+					TimeDS ds = TimeDS.EMPTY();
 					for( int i = 0; i < dt.length; i++ ) {
 						ds = ds.union( getDepends( dt[i] ), abox.doExplanation() );
 						if (abox.doExplanation()) {
 							ATermAppl dtName = ATermUtils.isNot(dt[i]) ? (ATermAppl) dt[i].getArgument(0) : dt[i];
 							ATermAppl definition = dtReasoner.getDefinition(dtName);
 							if (definition != null) {
-	                            ds = ds.union(Collections.singleton(ATermUtils.makeDatatypeDefinition(dtName, definition)), true);
+								ds.addExplain(new DependencySet(ATermUtils.makeDatatypeDefinition(dtName, definition)), true);
                             }
 						}
 					}
@@ -382,11 +392,11 @@ public class Literal extends Node {
 							 */
 							valueLiteral = abox.addLiteral( valueTerm );
 						}
-						DependencySet mergeDs = DependencySet.INDEPENDENT;
-						for ( DependencySet ds : depends.values() ) {
-	                        mergeDs = mergeDs.union( ds, abox.doExplanation() );
+						TimeDS mergeDS = TimeDS.INDEPENDENT();
+						for ( TimeDS timeDS : depends.values() ) {
+	                        mergeDS = mergeDS.union( timeDS, abox.doExplanation() );
                         }
-						merge = new NodeMerge( this, valueLiteral, mergeDs );
+						merge = new NodeMerge( this, valueLiteral, mergeDS );
 					}
 				} else {
 					ArrayList<ATermAppl> primitives = new ArrayList<ATermAppl>();
@@ -402,13 +412,13 @@ public class Literal extends Node {
 					final ATermAppl dt[] = primitives
 							.toArray( new ATermAppl[primitives.size() - 1] );
 
-					DependencySet ds = DependencySet.EMPTY;
+					TimeDS ds = TimeDS.EMPTY();
 					for( int i = 0; i < dt.length; i++ ) {
 	                    ds = ds.union( getDepends( dt[i] ), abox.doExplanation() );
 	    				if (abox.doExplanation()) {
 							ATermAppl definition = dtReasoner.getDefinition(dt[i]);
 							if (definition != null) {
-	                            ds = ds.union(Collections.singleton(ATermUtils.makeDatatypeDefinition(dt[i], definition)), true);
+	                            ds.addExplain(new DependencySet(ATermUtils.makeDatatypeDefinition(dt[i], definition)), true);
                             }
 						}
                     }
@@ -428,15 +438,15 @@ public class Literal extends Node {
 	}
 
 	@Override
-    public boolean restore(int branch) {
-		Boolean restorePruned = restorePruned( branch );
+    public boolean restore(int branch, Time time) {
+		Boolean restorePruned = restorePruned( branch, time );
 		if( Boolean.FALSE.equals( restorePruned ) ) {
 	        return restorePruned;
         }
 
 		boolean restored = Boolean.TRUE.equals( restorePruned );
 
-		restored |= super.restore( branch );
+		restored |= super.restore( branch, time );
 		
 		if (clashed) {
 			checkClash();
@@ -446,7 +456,7 @@ public class Literal extends Node {
 	}
 
 	@Override
-    final public void prune(DependencySet ds) {
+    final public void prune(TimeDS ds) {
 		pruned = ds;
 	}
 

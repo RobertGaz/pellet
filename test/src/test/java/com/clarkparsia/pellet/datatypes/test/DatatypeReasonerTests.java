@@ -47,10 +47,7 @@ import java.util.Set;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
-import org.mindswap.pellet.ABox;
-import org.mindswap.pellet.DependencySet;
-import org.mindswap.pellet.KnowledgeBase;
-import org.mindswap.pellet.Literal;
+import org.mindswap.pellet.*;
 
 import aterm.ATermAppl;
 
@@ -114,9 +111,9 @@ public class DatatypeReasonerTests {
 	@Test
 	public void oneVSatisfiableDecimalRanges() throws InvalidConstrainingFacetException, InvalidLiteralException,
 	                UnrecognizedDatatypeException {
-		final Literal x = new Literal(term("x"), null, abox, DependencySet.INDEPENDENT);
+		final Literal x = new Literal(term("x"), null, abox, TimeDS.INDEPENDENT());
 		for (ATermAppl a : getSatisfiableDecimalRanges()) {
-			x.addType(a, DependencySet.INDEPENDENT);
+			x.addType(a, TimeDS.INDEPENDENT());
 		}
 
 		assertTrue(reasoner.isSatisfiable(singleton(x), Collections.<Literal, Set<Literal>> emptyMap()));
@@ -132,9 +129,9 @@ public class DatatypeReasonerTests {
 	@Test
 	public void oneVSatisfiableEnumerations() throws InvalidConstrainingFacetException, InvalidLiteralException,
 	                UnrecognizedDatatypeException {
-		final Literal x = new Literal(term("x"), null, abox, DependencySet.INDEPENDENT);
+		final Literal x = new Literal(term("x"), null, abox, TimeDS.INDEPENDENT());
 		for (ATermAppl a : getSatisfiableDecimalEnumerations()) {
-			x.addType(a, DependencySet.INDEPENDENT);
+			x.addType(a, TimeDS.INDEPENDENT());
 		}
 
 		assertTrue(reasoner.isSatisfiable(singleton(x), Collections.<Literal, Set<Literal>> emptyMap()));
@@ -150,9 +147,9 @@ public class DatatypeReasonerTests {
 	@Test
 	public void oneVUnsatisfiableDecimalRanges() throws InvalidConstrainingFacetException, InvalidLiteralException,
 	                UnrecognizedDatatypeException {
-		final Literal x = new Literal(term("x"), null, abox, DependencySet.INDEPENDENT);
+		final Literal x = new Literal(term("x"), null, abox, TimeDS.INDEPENDENT());
 		for (ATermAppl a : getUnsatisfiableDecimalRanges()) {
-			x.addType(a, DependencySet.INDEPENDENT);
+			x.addType(a, TimeDS.INDEPENDENT());
 		}
 
 		assertFalse(reasoner.isSatisfiable(singleton(x), Collections.<Literal, Set<Literal>> emptyMap()));
@@ -168,9 +165,9 @@ public class DatatypeReasonerTests {
 	@Test
 	public void oneVUnsatisfiableEnumerations() throws InvalidConstrainingFacetException, InvalidLiteralException,
 	                UnrecognizedDatatypeException {
-		final Literal x = new Literal(term("x"), null, abox, DependencySet.INDEPENDENT);
+		final Literal x = new Literal(term("x"), null, abox, TimeDS.INDEPENDENT());
 		for (ATermAppl a : getUnsatisfiableDecimalEnumerations()) {
-			x.addType(a, DependencySet.INDEPENDENT);
+			x.addType(a, TimeDS.INDEPENDENT());
 		}
 
 		assertFalse(reasoner.isSatisfiable(singleton(x), Collections.<Literal, Set<Literal>> emptyMap()));

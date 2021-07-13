@@ -698,7 +698,12 @@ public class ATermUtils {
 
 		return toSet( a, size );
 	}
-	
+
+	//	for props - for logs
+	public static String toString(ATerm prop) {
+		return URIUtils.getLocalName(prop.toString());
+	}
+
 	/**
 	 * Return the string representations of the terms in a collection. For each element of the collection
 	 * {@link #toString(ATermAppl)} function will be called to create the string representation.

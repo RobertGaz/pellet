@@ -35,6 +35,7 @@ import java.util.Iterator;
 import java.util.Set;
 
 import org.mindswap.pellet.PelletOptions;
+import org.mindswap.pellet.Time;
 import org.mindswap.pellet.utils.ATermUtils;
 import org.mindswap.pellet.utils.QNameProvider;
 import org.mindswap.pellet.utils.TaxonomyUtils;
@@ -61,8 +62,10 @@ public class ClassTreePrinter extends TreeTaxonomyPrinter<ATermAppl> implements 
 	@Override
 	protected void printNode(Set<ATermAppl> set) {
 		super.printNode( set );
-		
-		Set<ATermAppl> instances = TaxonomyUtils.getDirectInstances( taxonomy, set.iterator().next() );
+
+		ATermAppl c = set.iterator().next();
+
+		Set<ATermAppl> instances = TaxonomyUtils.getDirectInstances( taxonomy, c );
 		if(instances.size() > 0) {
 			out.print(" - (");
 			boolean printed = false;
@@ -80,6 +83,8 @@ public class ClassTreePrinter extends TreeTaxonomyPrinter<ATermAppl> implements 
 				    else
 				        printed = true;
 				    printURI(out, x);
+					Time time = taxonomy.getNode(c).getTime(x);
+					out.print(time);
 				}				
 			}
 			if(anonCount > 0) {

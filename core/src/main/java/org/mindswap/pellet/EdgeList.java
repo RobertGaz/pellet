@@ -31,13 +31,9 @@
 package org.mindswap.pellet;
 
 
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-import java.util.Set;
+import java.util.*;
 
+import org.mindswap.pellet.tableau.cache.CachedEdge;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
@@ -110,17 +106,32 @@ public class EdgeList implements Iterable<Edge> {
 		}
 	}
 
+	//ROBERT НАДО ТУТ MERGE ПО ВРЕМЕНИ
 	public void addEdgeList(EdgeList edges) {
 		int edgesSize = edges.size;
 		allocate(size + edgesSize); 
         System.arraycopy(edges.list, 0, list, size, edgesSize);
         size += edgesSize;		
 	}
-		
-	public void addEdge(Edge e) {
-		allocate(size + 1);
-		list[size++] = e;
+
+//	may affect arg Edge e
+//	return true if put new edge in EdgeList
+	public boolean addEdge(Edge e) {
+		Edge existingEdge = getExactEdge(e);
+		if (existingEdge != null) {
+			existingEdge.getDepends().add(e.getDepends());
+			return false;
+		} else {
+			allocate(size + 1);
+			list[size++] = e;
+			return true;
+		}
 	}
+
+//	public void addEdge(Edge e) {
+//		allocate(size + 1);
+//		list[size++] = e;
+//	}
 	
 	public boolean removeEdge(Edge edge) {
 		for(int i = 0; i < size; i++) {
@@ -266,7 +277,40 @@ public class EdgeList implements Iterable<Edge> {
 
         return result;
     }
-	
+
+	// filter neighbors by their class and edge to them
+	public Map<Node, TimeDS> getFilteredNeighborsAndTimeDS(Individual x, ATermAppl c, Time time) {
+		Map<Node, TimeDS> result = new LinkedHashMap<>();
+		for (Edge edge : this) {
+			Node neighbor = edge.getNeighbor(x);
+			Time intersection = Time.intersection(neighbor.getDepends(c).time(), edge.getDepends().time(), time);
+			if (!intersection.isEmpty()) {
+				TimeDS timeDS = TimeDS.intersection(
+						edge.getDepends().partBy(intersection), neighbor.getDepends(c).partBy(intersection)
+				);
+				result.computeIfPresent(neighbor, (n, ds) -> TimeDS.union(ds, timeDS));
+				result.putIfAbsent(neighbor, timeDS);
+			}
+
+		}
+		return result;
+	}
+
+	// filter neighbors by their class and edge to them
+	public Map<Node, Time> getFilteredNeighborsAndTime(Individual x, ATermAppl c, Time time) {
+		Map<Node, Time> result = new LinkedHashMap<>();
+		for (Edge edge : this) {
+			Node neighbor = edge.getNeighbor(x);
+			Time intersection = Time.intersection(neighbor.getDepends(c).time(), edge.getDepends().time(), time);
+			if (!intersection.isEmpty()) {
+				result.computeIfPresent(neighbor, (n, t) -> Time.union(t, intersection));
+				result.putIfAbsent(neighbor, intersection);
+			}
+
+		}
+		return result;
+	}
+
 	public boolean hasEdgeFrom(Individual from) {
 		return hasEdge(from, null, null);
 	}
@@ -311,6 +355,18 @@ public class EdgeList implements Iterable<Edge> {
 		
 		return false;
 	}
+
+	public Edge getEdge(Individual from, Role role, Node to) {
+		for(int i = 0; i < size; i++) {
+			Edge e = list[i];
+			if( (from == null || from.equals( e.getFrom() )) &&
+					(role == null || e.getRole().isSubRoleOf(role)) &&
+					(to == null || to.equals( e.getTo() )) )
+				return e;
+		}
+
+		return null;
+	}
 	
 	/**
 	 * Similar to {@link #hasEdge(Individual, Role, Node)} but does not
@@ -333,11 +389,18 @@ public class EdgeList implements Iterable<Edge> {
 		
 		return false;
 	}
-	
+
 	public boolean hasEdge(Edge e) {
 		return hasEdge(e.getFrom(), e.getRole(), e.getTo());
 	}
-	
+
+	public Edge getExactEdge(Edge e) {
+		if (e instanceof CachedEdge) {
+			return null;
+		}
+		return getExactEdge(e.getFrom(), e.getRole(), e.getTo());
+	}
+
 	public Edge getExactEdge(Individual from, Role role, Node to) {
 		for(int i = 0; i < size; i++) {
 			Edge e = list[i];
@@ -345,19 +408,19 @@ public class EdgeList implements Iterable<Edge> {
                 (role == null || e.getRole().equals(role)) &&
                 (to == null || to.equals( e.getTo() )) )
 				return e;
-		}		
-		
+		}
+
 		return null;
 	}
-	
-	public DependencySet getDepends(boolean doExplanation) {
-		DependencySet ds = DependencySet.INDEPENDENT;
-		
+
+	public TimeDS getDepends(boolean doExplanation) {
+		TimeDS ds = TimeDS.EMPTY();
+
 		for(int i = 0; i < size; i++) {
 			Edge e = list[i];
-            ds = ds.union( e.getDepends(), doExplanation );
-		}		
-		
+			ds = ds.union( e.getDepends(), doExplanation );
+		}
+
 		return ds;
 	}
 
@@ -382,10 +445,13 @@ public class EdgeList implements Iterable<Edge> {
 	public void reset() {
 		for(int i = 0; i < size; i++) {
 			Edge e = list[i];
-            
-			if( e.getDepends().getBranch() != DependencySet.NO_BRANCH ) {
+
+			e.getDepends().reset();
+
+			if( e.getDepends().isEmpty() ) {
 				removeEdge( i-- );
 			}
 		}
 	}
+
 }

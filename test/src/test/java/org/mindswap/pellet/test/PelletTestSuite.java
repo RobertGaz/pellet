@@ -9,9 +9,6 @@ package org.mindswap.pellet.test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 import org.junit.runners.Suite.SuiteClasses;
-import org.mindswap.pellet.test.inctest.IncConsistencyTests;
-import org.mindswap.pellet.test.inctest.IncJenaConsistencyTests;
-import org.mindswap.pellet.test.rules.RulesTestSuite;
 
 import com.clarkparsia.TestATermManchesterSyntaxRenderer;
 import com.clarkparsia.explanation.test.ExplanationTestSuite;
@@ -46,9 +43,6 @@ import com.clarkparsia.pellint.test.PellintTestSuite;
 	OWLPrimerTests.class,
 	OWLAPIObjectConversionTests.class,
 	OWLAPIAxiomConversionTests.class,
-	IncConsistencyTests.class,
-	IncJenaConsistencyTests.class,
-	RulesTestSuite.class,
 	TBoxTests.class,
 	DatatypesSuite.class,
 	ELTests.class,

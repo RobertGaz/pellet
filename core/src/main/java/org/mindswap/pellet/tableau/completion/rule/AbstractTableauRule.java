@@ -10,11 +10,7 @@ import java.util.logging.Logger;
 
 import org.mindswap.pellet.Individual;
 import org.mindswap.pellet.IndividualIterator;
-import org.mindswap.pellet.Node;
-import org.mindswap.pellet.PelletOptions;
 import org.mindswap.pellet.tableau.completion.CompletionStrategy;
-import org.mindswap.pellet.tableau.completion.queue.NodeSelector;
-import org.mindswap.pellet.tableau.completion.queue.QueueElement;
 
 /**
  * <p>
@@ -38,29 +34,19 @@ public abstract class AbstractTableauRule implements TableauRule {
     protected enum BlockingType { NONE, DIRECT, INDIRECT, COMPLETE }
     
     protected CompletionStrategy strategy;
-    protected NodeSelector nodeSelector;
     protected BlockingType blockingType;
 
-	public AbstractTableauRule(CompletionStrategy strategy, NodeSelector nodeSelector, BlockingType blockingType) {
+	public AbstractTableauRule(CompletionStrategy strategy, BlockingType blockingType) {
 		this.strategy = strategy;
-		this.nodeSelector = nodeSelector;
 		this.blockingType = blockingType;
 	}
 	
-	public boolean isDisabled() {
-		return false;
-	}
-	
 	public void apply( IndividualIterator i ) {
-        i.reset( nodeSelector );
+		i.reset();
         while( i.hasNext() ) {
             Individual node = i.next();
 			
-            if( strategy.getBlocking().isBlocked( node ) ) {
-				if( PelletOptions.USE_COMPLETION_QUEUE )
-					addQueueElement( node );				
-			}
-            else {            
+            if( !strategy.getBlocking().isBlocked( node ) ) {
 	            apply( node );
 	
 	            if( strategy.getABox().isClosed() )
@@ -83,8 +69,5 @@ public abstract class AbstractTableauRule implements TableauRule {
 			throw new AssertionError();
 		}
 	}
-	
-	protected void addQueueElement(Node node) {
-		strategy.getABox().getCompletionQueue().add( new QueueElement( node ), nodeSelector );
-	}
+
 }

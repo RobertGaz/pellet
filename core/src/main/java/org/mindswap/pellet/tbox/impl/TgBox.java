@@ -41,14 +41,16 @@ import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
-import org.mindswap.pellet.DependencySet;
 import org.mindswap.pellet.PelletOptions;
+import org.mindswap.pellet.TimeDS;
 import org.mindswap.pellet.utils.ATermUtils;
 
 import aterm.ATermAppl;
 import aterm.ATermInt;
 import aterm.ATermList;
+import org.mindswap.pellet.utils.Comparators;
 
 public class TgBox extends TBoxBase {
 	public static final Logger	log	= Logger.getLogger( TgBox.class.getName() );
@@ -113,13 +115,13 @@ public class TgBox extends TBoxBase {
 	}
 
 	public void absorb() {
-		log.fine( "Absorption started" );
+		log.info( "Absorption started" );
 
-		if( log.isLoggable( Level.FINE ) ) {
-			log.fine( "Tg.size was " + termhash.size() + " Tu.size was " + tbox.Tu.size() );
-		}
+		log.info( "Tg.size was " + termhash.size() + " Tu.size was " + tbox.Tu.size() );
 
-		Collection<TermDefinition> terms = termhash.values();
+
+//		Collection<TermDefinition> terms = termhash.values();
+		Collection<TermDefinition> terms = termhash.values().stream().sorted(Comparators.stringComparator).collect(Collectors.toList());
 
 		termhash = new HashMap<ATermAppl, TermDefinition>();
 
@@ -142,11 +144,8 @@ public class TgBox extends TBoxBase {
 			}
 		}
 
-		if( log.isLoggable( Level.FINE ) ) {
-			log.fine( "Tg.size is " + termhash.size() + " Tu.size is " + tbox.Tu.size() );
-		}
-
-		log.fine( "Absorption finished" );
+		log.info( "Tg.size is " + termhash.size() + " Tu.size is " + tbox.Tu.size() );
+		log.info( "Absorption finished" );
 	}
 
 	private void absorbSubClass(ATermAppl sub, ATermAppl sup, Set<ATermAppl> axiomExplanation) {
@@ -170,14 +169,9 @@ public class TgBox extends TBoxBase {
 	}
 
 	private boolean absorbTerm(Set<ATermAppl> set) {
-		RuleAbsorber ruleAbsorber = new RuleAbsorber( tbox );
 		if( log.isLoggable( Level.FINER ) )
 			log.finer( "Absorbing term " + set );
 		while( true ) {
-			log.finer( "Absorb rule" );
-			if( PelletOptions.USE_RULE_ABSORPTION && ruleAbsorber.absorbRule( set, explanation ) ) {
-				return true;
-			}
 			log.finer( "Absorb nominal" );
 			if( !PelletOptions.USE_PSEUDO_NOMINALS
 					&& (PelletOptions.USE_NOMINAL_ABSORPTION || PelletOptions.USE_HASVALUE_ABSORPTION)
@@ -260,7 +254,7 @@ public class TgBox extends TBoxBase {
 				tbox.getAbsorbedAxioms().addAll( explanation );
 
 				kb.addIndividual( ind );
-				kb.addType( ind, allInvPC, new DependencySet( explanation ) );
+				kb.addType( ind, allInvPC, new TimeDS( explanation ) );
 
 				return true;
 			}
@@ -285,7 +279,7 @@ public class TgBox extends TBoxBase {
 
 		tbox.getAbsorbedAxioms().addAll( explain );
 
-		DependencySet ds = new DependencySet( explain );
+		TimeDS ds = new TimeDS( explain );
 		while( !list.isEmpty() ) {
 			ATermAppl nominal = (ATermAppl) list.getFirst();
 			ATermAppl ind = (ATermAppl) nominal.getArgument( 0 );
